@@ -1,0 +1,31 @@
+load("@gazelle//:def.bzl", "gazelle")
+load("@rules_go//go:def.bzl", "TOOLS_NOGO", "go_binary", "go_library", "nogo")
+
+gazelle(name = "gazelle")
+
+nogo(
+    name = "cli_nogo",
+    vet = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        # https://pkg.go.dev/golang.org/x/tools/go/analysis/passes
+        "@org_golang_x_tools//go/analysis/passes/copylock",
+        "@org_golang_x_tools//go/analysis/passes/slog",
+    ],
+)
+
+go_library(
+    name = "cli_lib",
+    srcs = ["cli.go"],
+    importpath = "github.com/albertocavalcante/cli",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//cmd",
+    ],
+)
+
+go_binary(
+    name = "cli",
+    embed = [":cli_lib"],
+    visibility = ["//visibility:public"],
+)

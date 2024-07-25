@@ -1,0 +1,2 @@
+BAZELISK_HOME=~/.bazelisk
+BAZELISK_NOJDK=1
