@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/albertocavalcante/cli/cmd"
+	"github.com/albertocavalcante/garf/cmd"
 )
 
 func main() {

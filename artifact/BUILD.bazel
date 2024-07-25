@@ -1,0 +1,17 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "artifact",
+    srcs = [
+        "parser.go",
+        "types.go",
+    ],
+    importpath = "github.com/albertocavalcante/garf/artifact",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "artifact_test",
+    srcs = ["parser_test.go"],
+    embed = [":artifact"],
+)

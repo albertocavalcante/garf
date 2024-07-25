@@ -3,7 +3,10 @@ load("@rules_go//go:def.bzl", "go_library")
 go_library(
     name = "cmd",
     srcs = ["root.go"],
-    importpath = "github.com/albertocavalcante/cli/cmd",
+    importpath = "github.com/albertocavalcante/garf/cmd",
     visibility = ["//visibility:public"],
-    deps = ["@com_github_spf13_cobra//:cobra"],
+    deps = [
+        "//artifact",
+        "@com_github_spf13_cobra//:cobra",
+    ],
 )
