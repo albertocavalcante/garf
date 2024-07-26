@@ -1,0 +1,7 @@
+[run]
+timeout = "20m"
+concurrency = 10
+
+[linters]
+fast = true
+enable-all = true
