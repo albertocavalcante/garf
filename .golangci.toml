@@ -5,3 +5,9 @@ concurrency = 10
 [linters]
 fast = true
 enable-all = true
+
+[linters-settings.depguard.rules.main]
+allow = [] # allow all
+deny = [
+  { pkg = "io/ioutil", desc = "Deprecated: As of Go 1.16, the same functionality is now provided by package io or package os, and those implementations should be preferred in new code. See the specific function documentation for details." },
+]
