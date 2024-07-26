@@ -11,5 +11,5 @@ set JFROG_PASSWORD=password
 ```
 
 ```sh
-bazel run //:garf
+bazel run //:garf -- --source https://github.com/bazelbuild/bazel/releases/download/7.2.1/bazel_nojdk-7.2.1-windows-x86_64.exe --destination sandbox-generic-local
 ```
