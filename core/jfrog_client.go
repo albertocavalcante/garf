@@ -3,7 +3,6 @@ package core
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/albertocavalcante/garf/artifact"
 	"github.com/albertocavalcante/garf/pkg/pointer"
@@ -48,8 +47,6 @@ func NewJFrogRtManager() (*artifactory.ArtifactoryServicesManager, error) {
 
 // UploadGenericArtifact uploads a generic artifact to Artifactory
 func UploadGenericArtifact(file string, repoKey string, coordinates *artifact.ArtifactCoordinates) error {
-	defer os.RemoveAll(filepath.Dir(file))
-
 	rtManagerPtr, err := NewJFrogRtManager()
 	if err != nil {
 		return err

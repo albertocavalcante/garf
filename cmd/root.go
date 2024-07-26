@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/albertocavalcante/garf/artifact"
 	"github.com/albertocavalcante/garf/core"
@@ -16,6 +17,7 @@ const (
 var (
 	source      string
 	destination string
+	fromFile    string
 
 	rootCmd = &cobra.Command{
 		Use:   "garf",
@@ -35,11 +37,19 @@ var (
 			fmt.Printf("Artifact coordinates: %+v\n", artifactCoordinates)
 
 			fmt.Printf("Mirroring %s to %s\n", source, destination)
-			location, err := core.DownloadArtifact(source)
-			if err != nil {
-				return err
+
+			var location string
+			if fromFile != "" {
+				location = fromFile
+			} else {
+				defer os.RemoveAll(filepath.Dir(location))
+
+				location, err = core.DownloadArtifact(source)
+				if err != nil {
+					return err
+				}
+				fmt.Printf("Artifact downloaded to %s\n", location)
 			}
-			fmt.Printf("Artifact downloaded to %s\n", location)
 
 			err = core.UploadGenericArtifact(location, destination, artifactCoordinates)
 			if err != nil {
@@ -53,6 +63,7 @@ var (
 func init() {
 	rootCmd.Flags().StringVarP(&source, "source", "s", "", "Source of the artifacts")
 	rootCmd.Flags().StringVarP(&destination, "destination", "d", "", "Destination of the artifacts")
+	rootCmd.Flags().StringVarP(&fromFile, "from-file", "f", "", "Use the source URL only for coordinates and upload the file at the specified path")
 }
 
 func Execute() {
