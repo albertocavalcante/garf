@@ -8,3 +8,8 @@ type ArtifactCoordinates struct {
 	Version  string
 	Artifact string
 }
+
+// UrlPath creates a URL path from the artifact coordinates.
+func (ac *ArtifactCoordinates) UrlPath() string {
+	return ac.Host + "/" + ac.Org + "/" + ac.Repo + "/" + ac.Version + "/" + ac.Artifact
+}

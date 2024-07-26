@@ -55,7 +55,7 @@ func UploadGenericArtifact(file string, repoKey string, coordinates *artifact.Ar
 
 	params := services.NewUploadParams()
 	params.Pattern = file
-	params.Target = fmt.Sprintf("%s/%s/%s/%s/%s", repoKey, coordinates.Host, coordinates.Org, coordinates.Repo, coordinates.Artifact)
+	params.Target = repoKey + "/" + coordinates.UrlPath()
 
 	totalUploaded, totalFailed, err := rtManager.UploadFiles(params)
 	if err != nil {
