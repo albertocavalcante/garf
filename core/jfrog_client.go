@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/albertocavalcante/garf/artifact"
 	"github.com/albertocavalcante/garf/pkg/pointer"
 	"github.com/jfrog/jfrog-client-go/artifactory"
 	"github.com/jfrog/jfrog-client-go/artifactory/auth"
+	"github.com/jfrog/jfrog-client-go/artifactory/services"
 	"github.com/jfrog/jfrog-client-go/config"
 )
 
@@ -57,5 +59,27 @@ func JFrogArtifactoryVersion() error {
 	}
 
 	fmt.Printf("Version: %s\n", version)
+	return nil
+}
+
+// UploadGenericArtifact uploads a generic artifact to Artifactory
+func UploadGenericArtifact(file string, repoKey string, coordinates *artifact.ArtifactCoordinates) error {
+	rtManagerPtr, err := NewJFrogRtManager()
+	if err != nil {
+		return err
+	}
+	rtManager := pointer.Deref(rtManagerPtr, nil)
+
+	params := services.NewUploadParams()
+	params.Pattern = file
+	params.Target = fmt.Sprintf("%s/%s/%s/%s/%s", repoKey, coordinates.Host, coordinates.Org, coordinates.Repo, coordinates.Artifact)
+
+	totalUploaded, totalFailed, err := rtManager.UploadFiles(params)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Total uploaded: %d\n", totalUploaded)
+	fmt.Printf("Total failed: %d\n", totalFailed)
+
 	return nil
 }

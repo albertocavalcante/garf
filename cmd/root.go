@@ -40,6 +40,16 @@ var (
 				return err
 			}
 
+			location, err := core.DownloadArtifact(source)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Artifact downloaded to %s\n", location)
+
+			err = core.UploadGenericArtifact(location, destination, artifactCoordinates)
+			if err != nil {
+				return err
+			}
 			return nil
 		},
 	}
