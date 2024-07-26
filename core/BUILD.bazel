@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "core",
+    srcs = ["client.go"],
+    importpath = "github.com/albertocavalcante/garf/core",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/pointer",
+        "@com_github_jfrog_jfrog_client_go//artifactory",
+        "@com_github_jfrog_jfrog_client_go//artifactory/auth",
+        "@com_github_jfrog_jfrog_client_go//config",
+    ],
+)

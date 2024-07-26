@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/albertocavalcante/garf/artifact"
+	"github.com/albertocavalcante/garf/core"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +34,12 @@ var (
 			}
 			fmt.Printf("Mirroring %s to %s\n", source, destination)
 			fmt.Printf("Artifact coordinates: %+v\n", artifactCoordinates)
+
+			err = core.JFrogArtifactoryVersion()
+			if err != nil {
+				return err
+			}
+
 			return nil
 		},
 	}
