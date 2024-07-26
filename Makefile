@@ -1,5 +1,7 @@
 ifeq ($(OS),Windows_NT)
-  export BAZEL_SH=C:\msys64\usr\bin\bash.exe
+  ifeq ($(BAZEL_SH),)
+    export BAZEL_SH=C:\msys64\usr\bin\bash.exe
+  endif
 endif
 
 build:
