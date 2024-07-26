@@ -12,7 +12,6 @@ import (
 	"github.com/jfrog/jfrog-client-go/config"
 )
 
-
 // NewJFrogRtManager creates a new ArtifactoryServicesManager.
 func NewJFrogRtManager() (*artifactory.ArtifactoryServicesManager, error) {
 	// Get required environment variables
@@ -52,18 +51,25 @@ func UploadGenericArtifact(file string, repoKey string, coordinates *artifact.Ar
 	if err != nil {
 		return err
 	}
+
 	rtManager := pointer.Deref(rtManagerPtr, nil)
 
 	params := services.NewUploadParams()
 	params.Pattern = file
-	params.Target = repoKey + "/" + coordinates.UrlPath()
+	params.Target = constructTargetPath(repoKey, coordinates)
 
 	totalUploaded, totalFailed, err := rtManager.UploadFiles(params)
 	if err != nil {
 		return err
 	}
+
 	fmt.Printf("Total uploaded: %d\n", totalUploaded)
 	fmt.Printf("Total failed: %d\n", totalFailed)
 
 	return nil
+}
+
+// constructTargetPath constructs the target path for uploading the artifact.
+func constructTargetPath(repoKey string, coordinates *artifact.ArtifactCoordinates) string {
+	return fmt.Sprintf("%s/%s", repoKey, coordinates.UrlPath())
 }
