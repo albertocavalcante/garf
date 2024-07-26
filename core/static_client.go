@@ -15,7 +15,6 @@ func DownloadArtifact(artifactURL string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary directory: %w", err)
 	}
-	// defer os.RemoveAll(tempDir) // Clean up the temporary directory when done
 
 	// Get the filename from the URL
 	filename := filepath.Base(artifactURL)
