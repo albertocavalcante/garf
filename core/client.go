@@ -13,16 +13,20 @@ import (
 // NewJFrogRtManager creates a new ArtifactoryServicesManager
 func NewJFrogRtManager() (*artifactory.ArtifactoryServicesManager, error) {
 	rtDetails := auth.NewArtifactoryDetails()
-	// Leave hardcoded for now
-	rtDetails.SetUrl("https://albertocavalcante.jfrog.io/artifactory")
 
+	// Artifactory URL
+	jfrogUrl := os.Getenv("JFROG_URL")
+	if jfrogUrl == "" {
+		return nil, fmt.Errorf("JFROG_URL environment variable is required")
+	}
+	rtDetails.SetUrl(jfrogUrl)
+
+	// Artifactory Authentication
 	jfrogUser := os.Getenv("JFROG_USER")
 	jfrogPassword := os.Getenv("JFROG_PASSWORD")
-
 	if jfrogUser == "" || jfrogPassword == "" {
 		return nil, fmt.Errorf("JFROG_USER and JFROG_PASSWORD environment variables are required")
 	}
-
 	rtDetails.SetUser(jfrogUser)
 	rtDetails.SetPassword(jfrogPassword)
 
