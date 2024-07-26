@@ -45,23 +45,6 @@ func NewJFrogRtManager() (*artifactory.ArtifactoryServicesManager, error) {
 	return &rtManager, nil
 }
 
-// JFrogArtifactoryVersion prints the version of the Artifactory instance
-func JFrogArtifactoryVersion() error {
-	rtManagerPtr, err := NewJFrogRtManager()
-	if err != nil {
-		return err
-	}
-	rtManager := pointer.Deref(rtManagerPtr, nil)
-
-	version, err := rtManager.GetVersion()
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Version: %s\n", version)
-	return nil
-}
-
 // UploadGenericArtifact uploads a generic artifact to Artifactory
 func UploadGenericArtifact(file string, repoKey string, coordinates *artifact.ArtifactCoordinates) error {
 	rtManagerPtr, err := NewJFrogRtManager()

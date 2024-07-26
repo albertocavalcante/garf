@@ -32,14 +32,9 @@ var (
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Mirroring %s to %s\n", source, destination)
 			fmt.Printf("Artifact coordinates: %+v\n", artifactCoordinates)
 
-			err = core.JFrogArtifactoryVersion()
-			if err != nil {
-				return err
-			}
-
+			fmt.Printf("Mirroring %s to %s\n", source, destination)
 			location, err := core.DownloadArtifact(source)
 			if err != nil {
 				return err
