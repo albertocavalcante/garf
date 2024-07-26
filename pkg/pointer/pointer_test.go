@@ -1,22 +1,26 @@
-package pointer
+package pointer_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/albertocavalcante/garf/pkg/pointer"
+)
 
 func TestRef(t *testing.T) {
 	type T int
 
 	val := T(0)
-	pointer := To(val)
+	ptr := pointer.To(val)
 
-	if *pointer != val {
-		t.Errorf("expected %d, got %d", val, *pointer)
+	if *ptr != val {
+		t.Errorf("expected %d, got %d", val, *ptr)
 	}
 
 	val = T(1)
-	pointer = To(val)
+	ptr = pointer.To(val)
 
-	if *pointer != val {
-		t.Errorf("expected %d, got %d", val, *pointer)
+	if *ptr != val {
+		t.Errorf("expected %d, got %d", val, *ptr)
 	}
 }
 
@@ -25,12 +29,12 @@ func TestDeref(t *testing.T) {
 
 	var val, def T = 1, 0
 
-	out := Deref(&val, def)
+	out := pointer.Deref(&val, def)
 	if out != val {
 		t.Errorf("expected %d, got %d", val, out)
 	}
 
-	out = Deref(nil, def)
+	out = pointer.Deref(nil, def)
 	if out != def {
 		t.Errorf("expected %d, got %d", def, out)
 	}
