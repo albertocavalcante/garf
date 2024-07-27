@@ -1,4 +1,5 @@
 {
+    "go.useLanguageServer": true,
     // https://golangci-lint.run/welcome/integrations/#go-for-visual-studio-code
     "go.lintTool": "golangci-lint",
     "go.lintFlags": [
