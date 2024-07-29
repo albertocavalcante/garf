@@ -1,12 +1,18 @@
 {
     "go.useLanguageServer": true,
     "gopls": {
-	    "formatting.gofumpt": true,
+        "formatting.gofumpt": true,
     },
     // https://golangci-lint.run/welcome/integrations/#go-for-visual-studio-code
     "go.lintTool": "golangci-lint",
     "go.lintFlags": [
         "--fast",
         "--allow-parallel-runners"
+    ],
+    // https://github.com/bazelbuild/vscode-bazel#using-a-language-server-experimental
+    "bazel.lsp.command": "starpls",
+    "bazel.lsp.args": [
+        "server",
+        "--experimental_infer_ctx_attributes"
     ]
 }
