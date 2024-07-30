@@ -1,7 +1,7 @@
 {
   "type": "auto",
-  "mode": "fix",
-  "lint": "fix",
+  "mode": "check",
+  "lint": "warn",
   "warningsList": [
     "attr-applicable_licenses",
     "attr-cfg",
