@@ -3,7 +3,7 @@ module github.com/albertocavalcante/garf
 go 1.22.5
 
 require (
-	github.com/jfrog/jfrog-client-go v1.43.0
+	github.com/jfrog/jfrog-client-go v1.43.1
 	github.com/spf13/cobra v1.8.1
 )
 
@@ -28,8 +28,8 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jfrog/archiver/v3 v3.6.1 // indirect
-	github.com/jfrog/build-info-go v1.9.30 // indirect
-	github.com/jfrog/gofrog v1.7.4 // indirect
+	github.com/jfrog/build-info-go v1.9.31 // indirect
+	github.com/jfrog/gofrog v1.7.5 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.3 // indirect
@@ -47,7 +47,7 @@ require (
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
 	github.com/xo/terminfo v0.0.0-20210125001918-ca9a967f8778 // indirect
 	golang.org/x/crypto v0.25.0 // indirect
-	golang.org/x/exp v0.0.0-20240707233637-46b078467d37 // indirect
+	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/mod v0.19.0 // indirect
 	golang.org/x/net v0.27.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
