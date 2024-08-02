@@ -1,18 +1,14 @@
 load("@gazelle//:def.bzl", "gazelle")
 load("@rules_go//go:def.bzl", "go_binary", "go_library", "nogo")
+load("//:analyzers.bzl", "go_vet_analyzers_labels")
 
 # gazelle:proto disable_global
 gazelle(name = "gazelle")
 
 nogo(
     name = "garf_nogo",
-    vet = True,
     visibility = ["//visibility:public"],
-    deps = [
-        # https://pkg.go.dev/golang.org/x/tools/go/analysis/passes
-        "@org_golang_x_tools//go/analysis/passes/copylock",
-        "@org_golang_x_tools//go/analysis/passes/slog",
-    ],
+    deps = go_vet_analyzers_labels(),
 )
 
 go_library(
