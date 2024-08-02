@@ -14,5 +14,8 @@
     "bazel.lsp.args": [
         "server",
         "--experimental_infer_ctx_attributes"
-    ]
+    ],
+    "[starlark]": {
+        "files.eol": "\n"
+    }
 }
