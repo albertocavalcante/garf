@@ -1,4 +1,7 @@
 {
+    "[starlark]": {
+        "files.eol": "\n"
+    },
     "go.useLanguageServer": true,
     "gopls": {
         "formatting.gofumpt": true,
@@ -15,7 +18,5 @@
         "server",
         "--experimental_infer_ctx_attributes"
     ],
-    "[starlark]": {
-        "files.eol": "\n"
-    }
+    "bazel.buildifierFixOnFormat": true,
 }
