@@ -1,5 +1,8 @@
 {
     "editor.detectIndentation": false,
+    "[yaml]": {
+        "editor.tabSize": 2,
+    },
     "[starlark]": {
         "files.eol": "\n"
     },
