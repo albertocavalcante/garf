@@ -26,3 +26,37 @@ go_binary(
     embed = [":garf_lib"],
     visibility = ["//visibility:public"],
 )
+
+[
+    go_binary(
+        name = "garf-%s-%s" % (os, arch),
+        embed = [":garf_lib"],
+        gc_linkopts = [
+            "-s",
+            "-w",
+        ],
+        goarch = arch,
+        goos = os,
+        pure = "on",
+        visibility = ["//visibility:public"],
+    )
+    for os, arch in [
+        ("linux", "amd64"),
+        ("linux", "arm64")
+    ]
+]
+
+[
+    go_binary(
+        name = "garf-%s-%s" % (os, arch),
+        embed = [":garf_lib"],
+        goarch = arch,
+        goos = os,
+        pure = "on",
+        visibility = ["//visibility:public"],
+    )
+    for os, arch in [
+        ("windows", "amd64"),
+        ("windows", "arm64"),
+    ]
+]
