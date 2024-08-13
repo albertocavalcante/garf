@@ -1,8 +1,12 @@
 # Command Line Reference
-# # https://bazel.build/reference/command-line-reference
+# https://bazel.build/reference/command-line-reference
 
 common --enable_platform_specific_config
 
 # Startup Options
 # https://bazel.build/reference/command-line-reference#startup-options
 # startup --server_javabase=/usr/lib/jvm/java-21-openjdk-amd64
+
+# Toolchain Debugging
+# https://bazel.build/extending/toolchains#debugging-toolchains
+build:debug --toolchain_resolution_debug=".*"
