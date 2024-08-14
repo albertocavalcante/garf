@@ -2,33 +2,33 @@ package core
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/albertocavalcante/garf/artifact"
-	"github.com/albertocavalcante/garf/pkg/pointer"
 	"github.com/jfrog/jfrog-client-go/artifactory"
 	"github.com/jfrog/jfrog-client-go/artifactory/auth"
 	"github.com/jfrog/jfrog-client-go/artifactory/services"
 	"github.com/jfrog/jfrog-client-go/config"
 )
 
-// NewJFrogRtManager creates a new ArtifactoryServicesManager.
-func NewJFrogRtManager() (*artifactory.ArtifactoryServicesManager, error) {
-	// Get required environment variables
-	jfrogUrl := os.Getenv("JFROG_URL")
-	jfrogUser := os.Getenv("JFROG_USER")
-	jfrogPassword := os.Getenv("JFROG_PASSWORD")
+// JFrogConfig contains the required properties to connect to JFrog Artifactory.
+type JFrogConfig struct {
+	Url      string
+	User     string
+	Password string
+}
 
-	// Validate required environment variables
-	if jfrogUrl == "" || jfrogUser == "" || jfrogPassword == "" {
-		return nil, fmt.Errorf("JFROG_URL, JFROG_USER and JFROG_PASSWORD environment variables are required")
-	}
+// JFrogClient is an embedded ArtifactoryServicesManager which adds convenience methods.
+type JFrogClient struct {
+	artifactory.ArtifactoryServicesManager
+}
 
+// NewJFrogClient creates a new JFrogClient (ArtifactoryServicesManager).
+func NewJFrogClient(jc *JFrogConfig) (*JFrogClient, error) {
 	// Create Artifactory details
 	rtDetails := auth.NewArtifactoryDetails()
-	rtDetails.SetUrl(jfrogUrl)
-	rtDetails.SetUser(jfrogUser)
-	rtDetails.SetPassword(jfrogPassword)
+	rtDetails.SetUrl(jc.Url)
+	rtDetails.SetUser(jc.User)
+	rtDetails.SetPassword(jc.Password)
 
 	// Build service configuration
 	serviceConfig, err := config.NewConfigBuilder().SetServiceDetails(rtDetails).Build()
@@ -42,23 +42,16 @@ func NewJFrogRtManager() (*artifactory.ArtifactoryServicesManager, error) {
 		return nil, err
 	}
 
-	return &rtManager, nil
+	return &JFrogClient{rtManager}, nil
 }
 
 // UploadGenericArtifact uploads a generic artifact to Artifactory.
-func UploadGenericArtifact(file string, repoKey string, coordinates *artifact.ArtifactCoordinates) error {
-	rtManagerPtr, err := NewJFrogRtManager()
-	if err != nil {
-		return err
-	}
-
-	rtManager := pointer.Deref(rtManagerPtr, nil)
-
+func (c *JFrogClient) UploadGenericArtifact(file, repoKey string, coordinates *artifact.ArtifactCoordinates) error {
 	params := services.NewUploadParams()
 	params.Pattern = file
 	params.Target = constructTargetPath(repoKey, coordinates)
 
-	totalUploaded, totalFailed, err := rtManager.UploadFiles(params)
+	totalUploaded, totalFailed, err := c.UploadFiles(params)
 	if err != nil {
 		return err
 	}
