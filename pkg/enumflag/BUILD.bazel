@@ -1,0 +1,8 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "enumflag",
+    srcs = ["enumflag.go"],
+    importpath = "github.com/albertocavalcante/garf/pkg/enumflag",
+    visibility = ["//visibility:public"],
+)
