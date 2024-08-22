@@ -3,6 +3,9 @@
 
 common --enable_platform_specific_config
 
+# Incompatible Flags
+common --incompatible_use_plus_in_repo_names
+
 # Startup Options
 # https://bazel.build/reference/command-line-reference#startup-options
 # startup --server_javabase=/usr/lib/jvm/java-21-openjdk-amd64
