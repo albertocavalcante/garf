@@ -31,17 +31,38 @@ func (f *GarfFlags) addFlags(cmd *cobra.Command) {
 func NewRootCmd() *cobra.Command {
 	f := &GarfFlags{}
 
+	var jfConfig *core.JFrogConfig
+
 	cmd := &cobra.Command{
 		Use:   "garf",
 		Short: "garf is a CLI to mirror artifacts",
 		Long: `A CLI to mirror artifacts from places such as
 				GitHub Releases to registries such as 
 				JFrog Artifactory.`,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if f.Source == "" || f.Destination == "" {
 				return fmt.Errorf("--source and --destination flags are required")
 			}
 
+			// Get required environment variables
+			jfrogUrl := os.Getenv("JFROG_URL")
+			jfrogUser := os.Getenv("JFROG_USER")
+			jfrogPassword := os.Getenv("JFROG_PASSWORD")
+
+			// Validate required environment variables
+			if jfrogUrl == "" || jfrogUser == "" || jfrogPassword == "" {
+				return fmt.Errorf("JFROG_URL, JFROG_USER and JFROG_PASSWORD environment variables are required")
+			}
+
+			jfConfig = &core.JFrogConfig{
+				Url:      jfrogUrl,
+				User:     jfrogUser,
+				Password: jfrogPassword,
+			}
+
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
 			artifactCoordinates, err := artifact.ExtractCoordinatesFromURL(f.Source)
 			if err != nil {
 				return err
@@ -63,7 +84,12 @@ func NewRootCmd() *cobra.Command {
 				fmt.Printf("Artifact downloaded to %s\n", location)
 			}
 
-			err = core.UploadGenericArtifact(location, f.Destination, artifactCoordinates)
+			jfClient, err := core.NewJFrogClient(jfConfig)
+			if err != nil {
+				return err
+			}
+
+			err = jfClient.UploadGenericArtifact(location, f.Destination, artifactCoordinates)
 			if err != nil {
 				return err
 			}
