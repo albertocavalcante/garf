@@ -7,9 +7,15 @@ type ArtifactCoordinates struct {
 	Repo     string
 	Version  string
 	Artifact string
+	RawPath  string
 }
 
-// UrlPath creates a URL path from the artifact coordinates.
+// RawUrlPath creates a URL path from the artifact minimum coordinates.
+func (ac *ArtifactCoordinates) RawUrlPath() string {
+	return ac.Host + "/" + ac.RawPath
+}
+
+// UrlPath creates a URL path from the parsed artifact coordinates.
 func (ac *ArtifactCoordinates) UrlPath() string {
 	return ac.Host + "/" + ac.Org + "/" + ac.Repo + "/" + ac.Version + "/" + ac.Artifact
 }

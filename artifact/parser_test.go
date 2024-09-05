@@ -22,6 +22,7 @@ func TestExtractCoordinatesFromURL(t *testing.T) {
 				Repo:     "bazel",
 				Version:  "7.2.1",
 				Artifact: "bazel_nojdk-7.2.1-windows-x86_64.exe",
+				RawPath:  "bazelbuild/bazel/releases/download/7.2.1/bazel_nojdk-7.2.1-windows-x86_64.exe",
 			},
 			expectedError: nil,
 		},
@@ -30,6 +31,7 @@ func TestExtractCoordinatesFromURL(t *testing.T) {
 			expectedCoordinates: &ArtifactCoordinates{
 				Host:     "example.com",
 				Artifact: "artifact.zip",
+				RawPath:  "path/to/artifact.zip",
 			},
 			expectedError: nil,
 		},
@@ -52,16 +54,19 @@ func TestExtractCoordinatesFromURL(t *testing.T) {
 				if err == nil || err.Error() != tc.expectedError.Error() {
 					t.Errorf("Expected error %v, got %v", tc.expectedError, err)
 				}
+
 				return
 			}
 
 			if err != nil {
 				t.Errorf("Unexpected error: %v", err)
+
 				return
 			}
 
 			if coordinates == nil {
 				t.Errorf("Expected coordinates, got nil")
+
 				return
 			}
 
@@ -79,6 +84,9 @@ func TestExtractCoordinatesFromURL(t *testing.T) {
 			}
 			if coordinates.Artifact != tc.expectedCoordinates.Artifact {
 				t.Errorf("Expected artifact %s, got %s", tc.expectedCoordinates.Artifact, coordinates.Artifact)
+			}
+			if coordinates.RawPath != tc.expectedCoordinates.RawPath {
+				t.Errorf("Expected raw path %s, got %s", tc.expectedCoordinates.RawPath, coordinates.RawPath)
 			}
 		})
 	}

@@ -21,6 +21,11 @@ func ExtractCoordinatesFromURL(artifactURL string) (*ArtifactCoordinates, error)
 		Artifact: path.Base(parsedURL.Path),
 	}
 
+	rawPathRegEx := regexp.MustCompile(`^/(.+)$`)
+	if matches := rawPathRegEx.FindStringSubmatch(parsedURL.Path); len(matches) == 2 {
+		coordinates.RawPath = matches[1]
+	}
+
 	gitHubReleaseRegEx := regexp.MustCompile(`^/([^/]+)/([^/]+)/releases/download/([^/]+)/(.+)$`)
 	if matches := gitHubReleaseRegEx.FindStringSubmatch(parsedURL.Path); len(matches) == 5 {
 		coordinates.Org = matches[1]

@@ -3,7 +3,6 @@ package core
 import (
 	"fmt"
 
-	"github.com/albertocavalcante/garf/artifact"
 	"github.com/jfrog/jfrog-client-go/artifactory"
 	"github.com/jfrog/jfrog-client-go/artifactory/auth"
 	"github.com/jfrog/jfrog-client-go/artifactory/services"
@@ -46,10 +45,10 @@ func NewJFrogClient(jc *JFrogConfig) (*JFrogClient, error) {
 }
 
 // UploadGenericArtifact uploads a generic artifact to Artifactory.
-func (c *JFrogClient) UploadGenericArtifact(file, repoKey string, coordinates *artifact.ArtifactCoordinates) error {
+func (c *JFrogClient) UploadGenericArtifact(file, targetPath string) error {
 	params := services.NewUploadParams()
 	params.Pattern = file
-	params.Target = constructTargetPath(repoKey, coordinates)
+	params.Target = targetPath
 
 	totalUploaded, totalFailed, err := c.UploadFiles(params)
 	if err != nil {
@@ -60,9 +59,4 @@ func (c *JFrogClient) UploadGenericArtifact(file, repoKey string, coordinates *a
 	fmt.Printf("Total failed: %d\n", totalFailed)
 
 	return nil
-}
-
-// constructTargetPath constructs the target path for uploading the artifact.
-func constructTargetPath(repoKey string, coordinates *artifact.ArtifactCoordinates) string {
-	return fmt.Sprintf("%s/%s", repoKey, coordinates.UrlPath())
 }

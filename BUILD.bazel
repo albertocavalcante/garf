@@ -42,7 +42,7 @@ go_binary(
     )
     for os, arch in [
         ("linux", "amd64"),
-        ("linux", "arm64")
+        ("linux", "arm64"),
     ]
 ]
 
