@@ -1,6 +1,6 @@
 module github.com/albertocavalcante/garf
 
-go 1.23.0
+go 1.22.5
 
 require (
 	github.com/jfrog/jfrog-client-go v1.46.1
