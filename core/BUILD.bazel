@@ -9,7 +9,6 @@ go_library(
     importpath = "github.com/albertocavalcante/garf/core",
     visibility = ["//visibility:public"],
     deps = [
-        "//artifact",
         "@com_github_jfrog_jfrog_client_go//artifactory",
         "@com_github_jfrog_jfrog_client_go//artifactory/auth",
         "@com_github_jfrog_jfrog_client_go//artifactory/services",
