@@ -3,6 +3,7 @@
         "golang.Go",
         "BazelBuild.vscode-bazel",
         "ms-vscode.makefile-tools",
-        "tamasfe.even-better-toml"
+        "tamasfe.even-better-toml",
+        "github.vscode-github-actions"
     ]
 }
