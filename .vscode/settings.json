@@ -1,4 +1,5 @@
 {
+    "bazel.queriesShareServer": false,
     "editor.detectIndentation": false,
     "[yaml]": {
         "editor.tabSize": 2,
