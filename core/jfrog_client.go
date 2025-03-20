@@ -46,11 +46,15 @@ func NewJFrogClient(jc *JFrogConfig) (*JFrogClient, error) {
 
 // UploadGenericArtifact uploads a generic artifact to Artifactory.
 func (c *JFrogClient) UploadGenericArtifact(file, targetPath string) error {
+	opts := artifactory.UploadServiceOptions{
+		FailFast: true,
+	}
+
 	params := services.NewUploadParams()
 	params.Pattern = file
 	params.Target = targetPath
 
-	totalUploaded, totalFailed, err := c.UploadFiles(params)
+	totalUploaded, totalFailed, err := c.UploadFiles(opts, params)
 	if err != nil {
 		return err
 	}
