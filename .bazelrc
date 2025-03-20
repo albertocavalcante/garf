@@ -3,6 +3,9 @@
 
 common --enable_platform_specific_config
 
+# Experimental Flags
+common --experimental_isolated_extension_usages
+
 # Incompatible Flags
 common --incompatible_use_plus_in_repo_names
 

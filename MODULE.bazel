@@ -39,17 +39,13 @@ go_sdk.nogo(nogo = "//:garf_nogo")
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 go_deps.from_file(go_mod = "//:go.mod")
 
-# nogo dependency
-go_deps.module(
-    path = "golang.org/x/tools",
-    sum = "h1:SGsXPZ+2l4JsgaCKkx+FQ9YZ5XEtA1GZYuoDjenLjvg=",
-    version = "v0.23.0",
-)
+nogo_deps = use_extension("@gazelle//:extensions.bzl", "go_deps", isolate = True)
+nogo_deps.from_file(go_mod = "//tools/nogo:go.mod")
+use_repo(nogo_deps, "org_golang_x_tools")
 
 # managed by `bazel mod tidy`
 use_repo(
     go_deps,
     "com_github_jfrog_jfrog_client_go",
     "com_github_spf13_cobra",
-    "org_golang_x_tools",
 )
