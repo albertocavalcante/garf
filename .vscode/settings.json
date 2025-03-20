@@ -21,7 +21,9 @@
     "bazel.lsp.command": "starpls",
     "bazel.lsp.args": [
         "server",
-        "--experimental_infer_ctx_attributes"
+        "--experimental_infer_ctx_attributes",
+        "--experimental_use_code_flow_analysis",
+        "--experimental_enable_label_completions"
     ],
     "bazel.buildifierFixOnFormat": true,
 }
