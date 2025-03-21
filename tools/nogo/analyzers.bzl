@@ -17,7 +17,7 @@ def standard_go_analyzers_labels():
     # type: () -> list
     """Generates nogo dependency labels for standard Go analyzers.
 
-    Source: 
+    Source:
         Vet Analyzers: https://cs.opensource.google/go/go/+/refs/tags/go1.22.5:src/cmd/vet/main.go;l=12-43
 
     Returns:
@@ -64,12 +64,12 @@ def standard_go_analyzers_labels():
     return generate_analyzers_labels(base_path, analyzers)
 
 def extended_analyzers_labels():
-    # type: () -> list[Label]
+    # type: () -> list
     """Returns a list of extended Go analyzer labels.
-    
+
     These are additional analyzers beyond the standard Go toolchain
     that provide extra checks and validations.
-    
+
     Returns:
         A list of extended analyzer labels.
     """
@@ -78,10 +78,10 @@ def extended_analyzers_labels():
 def complete_analyzers_suite():
     # type: () -> list
     """Generates a comprehensive list of all Go analyzers for nogo.
-    
+
     Combines standard Go analyzers with extended analyzers
     to provide a complete static analysis solution.
-    
+
     Returns:
         A list of all analyzer labels that can be used directly with nogo.
     """
