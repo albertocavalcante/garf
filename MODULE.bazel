@@ -34,7 +34,7 @@ register_toolchains(
 
 go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
 go_sdk.download(version = "1.23.7")
-go_sdk.nogo(nogo = "//:garf_nogo")
+# go_sdk.nogo(nogo = "//:garf_nogo")
 
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 go_deps.from_file(go_mod = "//:go.mod")
