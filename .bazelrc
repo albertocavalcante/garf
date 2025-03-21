@@ -12,6 +12,10 @@ common --incompatible_use_plus_in_repo_names
 # Hermetic C++ Toolchain
 build --action_env BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 
+# Pure Go Workaround
+# https://github.com/bazel-contrib/rules_go/issues/4154#issuecomment-2433739889
+build --define=gotags=purego
+
 # Startup Options
 # https://bazel.build/reference/command-line-reference#startup-options
 # startup --server_javabase=/usr/lib/jvm/java-21-openjdk-amd64
