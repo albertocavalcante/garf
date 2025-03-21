@@ -8,23 +8,6 @@ module(
 bazel_dep(name = "rules_go", version = "0.53.0")
 bazel_dep(name = "gazelle", version = "0.42.0")
 
-# circl has cc_library targets which needs a C++ toolchain
-bazel_dep(name = "hermetic_cc_toolchain", version = "3.2.0")
-
-toolchains = use_extension("@hermetic_cc_toolchain//toolchain:ext.bzl", "toolchains")
-use_repo(toolchains, "zig_sdk", "zig_sdk-linux-amd64", "zig_sdk-linux-arm64", "zig_sdk-macos-amd64", "zig_sdk-macos-arm64", "zig_sdk-windows-amd64")
-
-register_toolchains(
-    # Linux
-    # Use musl as per:
-    # https://honnef.co/articles/statically-compiled-go-programs-always-even-with-cgo-using-musl/
-    "@zig_sdk//toolchain:linux_amd64_musl",
-    "@zig_sdk//toolchain:linux_arm64_musl",
-    # Windows
-    "@zig_sdk//toolchain:windows_amd64",
-    "@zig_sdk//toolchain:windows_arm64",
-)
-
 go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
 go_sdk.download(version = "1.23.7")
 # go_sdk.nogo(nogo = "//:garf_nogo")
