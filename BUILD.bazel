@@ -34,7 +34,7 @@ go_binary(
         ],
         goarch = arch,
         goos = os,
-        pure = "off",
+        pure = "on",
         visibility = ["//visibility:public"],
     )
     for os, arch in [
@@ -49,7 +49,7 @@ go_binary(
         embed = [":garf_lib"],
         goarch = arch,
         goos = os,
-        pure = "off",
+        pure = "on",
         visibility = ["//visibility:public"],
     )
     for os, arch in [
