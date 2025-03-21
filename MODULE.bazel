@@ -41,7 +41,11 @@ go_deps.from_file(go_mod = "//:go.mod")
 
 nogo_deps = use_extension("@gazelle//:extensions.bzl", "go_deps", isolate = True)
 nogo_deps.from_file(go_mod = "//tools/nogo:go.mod")
-use_repo(nogo_deps, "org_golang_x_tools")
+use_repo(
+    nogo_deps,
+    "com_github_nishanths_exhaustive",
+    "org_golang_x_tools",
+)
 
 # managed by `bazel mod tidy`
 use_repo(
