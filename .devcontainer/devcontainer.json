@@ -1,0 +1,33 @@
+{
+    "name": "Garf RHEL",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "args": {
+            "BASE_IMAGE": "registry.access.redhat.com/ubi9/ubi-minimal",
+            "BASE_IMAGE_TAG": "9.5-1741850109",
+            "BAZELISK_VERSION": "1.25.0",
+            "STARPLS_VERSION": "0.1.21",
+            "BUILDTOOLS_VERSION": "8.0.3",
+            "BAZEL_LSP_VERSION": "0.6.4",
+            "CONTAINER_USER": "default",
+            "CONTAINER_USER_ID": "999"
+        }
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/git:1": {},
+        "ghcr.io/devcontainers/features/go:1": {}
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "golang.go",
+                "bazelbuild.vscode-bazel",
+                "github.vscode-github-actions",
+                "redhat.vscode-yaml",
+                "ms-vscode.makefile-tools",
+                "ms-azuretools.vscode-docker",
+                "eamodio.gitlens"
+            ]
+        }
+    }
+}

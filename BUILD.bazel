@@ -1,15 +1,12 @@
 load("@gazelle//:def.bzl", "gazelle")
-load("@rules_go//go:def.bzl", "go_binary", "go_library", "nogo")
-load("//:analyzers.bzl", "go_vet_analyzers_labels")
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+load("//tools/nogo:nogo.bzl", "setup_nogo")
 
 # gazelle:proto disable_global
 gazelle(name = "gazelle")
 
-nogo(
-    name = "garf_nogo",
-    visibility = ["//visibility:public"],
-    deps = go_vet_analyzers_labels(),
-)
+# This registers the nogo target defined in tools/nogo
+setup_nogo()
 
 go_library(
     name = "garf_lib",
@@ -37,7 +34,7 @@ go_binary(
         ],
         goarch = arch,
         goos = os,
-        pure = "off",
+        pure = "on",
         visibility = ["//visibility:public"],
     )
     for os, arch in [
@@ -52,7 +49,7 @@ go_binary(
         embed = [":garf_lib"],
         goarch = arch,
         goos = os,
-        pure = "off",
+        pure = "on",
         visibility = ["//visibility:public"],
     )
     for os, arch in [

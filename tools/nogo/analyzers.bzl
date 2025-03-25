@@ -1,6 +1,7 @@
 """Nogo dependency labels for Go analyzers."""
 
 def generate_analyzers_labels(base_path, items):
+    # type: (string, list[string]) -> list[string]
     """Generates labels by prefixing each item with a base path.
 
     Args:
@@ -10,22 +11,17 @@ def generate_analyzers_labels(base_path, items):
     Returns:
         A list of generated labels.
     """
+    return [base_path + item for item in items]
 
-    labels = []
-    for item in items:
-        label = base_path + item
-        labels.append(label)
+def standard_go_analyzers_labels():
+    # type: () -> list[string]
+    """Generates nogo dependency labels for standard Go analyzers.
 
-    return labels
-
-def go_vet_analyzers_labels():
-    """Generates nogo dependency labels for Go vet analyzers.
-
-    Source: 
+    Source:
         Vet Analyzers: https://cs.opensource.google/go/go/+/refs/tags/go1.22.5:src/cmd/vet/main.go;l=12-43
 
     Returns:
-        labels: A list of dependency labels for Go vet analyzers.
+        A list of dependency labels for standard Go analyzers.
     """
 
     analyzers = [
@@ -66,3 +62,31 @@ def go_vet_analyzers_labels():
     # https://pkg.go.dev/golang.org/x/tools/go/analysis/passes
     base_path = "@org_golang_x_tools//go/analysis/passes/"
     return generate_analyzers_labels(base_path, analyzers)
+
+def extended_analyzers_labels():
+    # type: () -> list[string]
+    """Returns a list of extended Go analyzer labels.
+
+    These are additional analyzers beyond the standard Go toolchain
+    that provide extra checks and validations.
+
+    Returns:
+        A list of extended analyzer labels.
+    """
+    return [
+        "@com_github_nishanths_exhaustive//:exhaustive",
+    ]
+
+def complete_analyzers_suite():
+    # type: () -> list[string]
+    """Generates a comprehensive list of all Go analyzers for nogo.
+
+    Combines standard Go analyzers with extended analyzers
+    to provide a complete static analysis solution.
+
+    Returns:
+        A list of all analyzer labels that can be used directly with nogo.
+    """
+    all_analyzers = standard_go_analyzers_labels()  # type: list[string]
+    all_analyzers.extend(extended_analyzers_labels())
+    return all_analyzers

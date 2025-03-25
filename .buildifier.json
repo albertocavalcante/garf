@@ -38,8 +38,6 @@
     "name-conventions",
     "native-android",
     "native-build",
-    "native-cc",
-    "native-java",
     "native-package",
     "native-proto",
     "native-py",

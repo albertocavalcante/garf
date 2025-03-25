@@ -1,0 +1,9 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Bazel
+
+- Avoid cleaning the cache as much as possible.
+- Use `bazel clean --expunge` as last resort.
