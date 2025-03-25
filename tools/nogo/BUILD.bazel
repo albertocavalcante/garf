@@ -1,0 +1,9 @@
+"""Build file for nogo configuration."""
+
+package(default_visibility = ["//visibility:public"])
+
+# Export the necessary files so they can be referenced by other targets
+exports_files([
+    "nogo.bzl",
+    "config.json",
+])
