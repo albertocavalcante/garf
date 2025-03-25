@@ -1,0 +1,21 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Go
+
+- NEVER change manually `go.mod` and `go.sum`, unless explicitly authorized or instructed.
+- AVOID using the local `go` installation on the host machine. PREFER to use `rules_go` Go SDK. Example:
+
+Execute: 
+
+```sh
+bazel run @rules_go//go -- mod tidy -v
+```
+
+Instead of:
+
+```sh
+go mod tidy -v
+```
