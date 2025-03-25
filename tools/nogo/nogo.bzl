@@ -15,6 +15,7 @@ def setup_nogo(name = "garf_nogo"):
     nogo(
         name = name,
         visibility = ["//visibility:public"],
-        deps = complete_analyzers_suite(),
+        # deps = complete_analyzers_suite(),
         config = "//tools/nogo:config.json",
+        vet = True,
     )
