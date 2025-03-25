@@ -1,0 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Global Rules
+
+- Bazel Dependency Management: Use `Bzlmod` only. DO NOT use `WORKSPACE`.

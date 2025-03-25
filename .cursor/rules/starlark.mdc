@@ -1,0 +1,14 @@
+---
+description: 
+globs: *.bzl,*.bazel
+alwaysApply: false
+---
+# Starlark
+
+**IMPORTANT**: You must follow the Starlark specification strictly: https://raw.githubusercontent.com/bazelbuild/starlark/refs/heads/master/spec.md
+
+- Remember Starlark is a restricted subset of Python. Starlark lacks many Python features including classes, recursion, generators, comprehensions with filter expressions, lambda functions, and exceptions. Use only supported syntax and features.
+- Always ensure cross-platform compatibility (macOS, Windows, Linux). Every rule must work identically across all platforms. Use select() for platform-specific behavior and thoroughly test on all systems.
+- Document with comprehensive docstrings following Starlark conventions. Use detailed docstrings that explain parameters, return values, platform-specific behavior, and example usage.
+- Use type annotations compatible with MyPy and PEP 484. Add type comments to improve code clarity and enable static analysis for complex functions. PLEASE NOTE: some Starlark types differ from Python, for example there's not `str`, only `string`.
+- Use list comprehensions and other functional patterns when readable. Prefer declarative patterns over imperative loops when they improve readability.
