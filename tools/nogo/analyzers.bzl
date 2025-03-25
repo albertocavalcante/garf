@@ -73,7 +73,9 @@ def extended_analyzers_labels():
     Returns:
         A list of extended analyzer labels.
     """
-    return []
+    return [
+        "@com_github_nishanths_exhaustive//:exhaustive",
+    ]
 
 def complete_analyzers_suite():
     # type: () -> list[string]
