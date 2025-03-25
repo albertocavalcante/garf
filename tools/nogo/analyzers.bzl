@@ -1,7 +1,7 @@
 """Nogo dependency labels for Go analyzers."""
 
 def generate_analyzers_labels(base_path, items):
-    # type: (string, list) -> list
+    # type: (string, list[string]) -> list[string]
     """Generates labels by prefixing each item with a base path.
 
     Args:
@@ -14,7 +14,7 @@ def generate_analyzers_labels(base_path, items):
     return [base_path + item for item in items]
 
 def standard_go_analyzers_labels():
-    # type: () -> list
+    # type: () -> list[string]
     """Generates nogo dependency labels for standard Go analyzers.
 
     Source:
@@ -64,7 +64,7 @@ def standard_go_analyzers_labels():
     return generate_analyzers_labels(base_path, analyzers)
 
 def extended_analyzers_labels():
-    # type: () -> list
+    # type: () -> list[string]
     """Returns a list of extended Go analyzer labels.
 
     These are additional analyzers beyond the standard Go toolchain
@@ -76,7 +76,7 @@ def extended_analyzers_labels():
     return []
 
 def complete_analyzers_suite():
-    # type: () -> list
+    # type: () -> list[string]
     """Generates a comprehensive list of all Go analyzers for nogo.
 
     Combines standard Go analyzers with extended analyzers
@@ -85,6 +85,6 @@ def complete_analyzers_suite():
     Returns:
         A list of all analyzer labels that can be used directly with nogo.
     """
-    all_analyzers = standard_go_analyzers_labels()  # type: list
+    all_analyzers = standard_go_analyzers_labels()  # type: list[string]
     all_analyzers.extend(extended_analyzers_labels())
     return all_analyzers
