@@ -1,7 +1,9 @@
 package cmd_test
 
 import (
+	"archive/zip"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/albertocavalcante/garf/artifact"
@@ -175,6 +177,142 @@ func TestConstructTargetPath(t *testing.T) {
 			require.Equal(t, tc.expected, result)
 		})
 	}
+}
+
+// setupZipTest creates a test environment with a zip file and test file.
+func setupZipTest(t *testing.T) (string, string, string, *artifact.ArtifactCoordinates) {
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "zip-test-")
+	require.NoError(t, err)
+
+	// Create a test file and zip it
+	testFilePath := filepath.Join(tempDir, "testfile.txt")
+	testFileContent := "test content"
+	err = os.WriteFile(testFilePath, []byte(testFileContent), 0o644)
+	require.NoError(t, err)
+
+	zipPath := filepath.Join(tempDir, "test.zip")
+	createZip(t, zipPath, testFilePath)
+
+	// Create test coordinates
+	coordinates := &artifact.ArtifactCoordinates{
+		Host:     "example.com",
+		Artifact: "test.zip",
+		RawPath:  "path/to/test.zip",
+	}
+
+	return tempDir, zipPath, testFileContent, coordinates
+}
+
+// runZipExtractionTest executes a single test case for HandleZipExtraction.
+func runZipExtractionTest(
+	t *testing.T,
+	flags *cmd.MirrorFlags,
+	location, tempDir, testFileContent string,
+	coordinates *artifact.ArtifactCoordinates,
+	shouldExtract bool,
+) {
+	// Make a copy of the coordinates for this test
+	testCoordinates := &artifact.ArtifactCoordinates{
+		Host:     coordinates.Host,
+		Artifact: coordinates.Artifact,
+		RawPath:  coordinates.RawPath,
+	}
+
+	// Call the exported version of handleZipExtraction
+	newLocation, err := cmd.HandleZipExtractionForTest(flags, location, tempDir, testCoordinates)
+	require.NoError(t, err)
+
+	if shouldExtract {
+		// Verify extraction occurred
+		require.NotEqual(t, location, newLocation, "Should have a new location after extraction")
+		require.Equal(t, "testfile.txt", testCoordinates.Artifact, "Artifact name should be updated")
+
+		// Verify the extracted file content
+		content, err := os.ReadFile(newLocation)
+		require.NoError(t, err)
+		require.Equal(t, testFileContent, string(content), "Extracted file content should match")
+	} else {
+		// Verify no extraction occurred
+		require.Equal(t, location, newLocation, "Location should not change")
+		require.Equal(t, "test.zip", testCoordinates.Artifact, "Artifact name should not change")
+	}
+}
+
+// TestHandleZipExtraction tests the zip extraction functionality.
+func TestHandleZipExtraction(t *testing.T) {
+	// Set up the test environment
+	tempDir, zipPath, testFileContent, coordinates := setupZipTest(t)
+	defer os.RemoveAll(tempDir)
+
+	// Define test cases
+	tests := []struct {
+		name          string
+		unzipFlag     bool
+		location      string
+		tempDir       string
+		shouldExtract bool
+	}{
+		{
+			name:          "Extract with unzip flag",
+			unzipFlag:     true,
+			location:      zipPath,
+			tempDir:       tempDir,
+			shouldExtract: true,
+		},
+		{
+			name:          "No extraction without unzip flag",
+			unzipFlag:     false,
+			location:      zipPath,
+			tempDir:       tempDir,
+			shouldExtract: false,
+		},
+		{
+			name:          "No extraction for non-zip file",
+			unzipFlag:     true,
+			location:      filepath.Join(tempDir, "testfile.txt"),
+			tempDir:       tempDir,
+			shouldExtract: false,
+		},
+	}
+
+	// Run test cases
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			flags := &cmd.MirrorFlags{
+				Unzip: tc.unzipFlag,
+			}
+
+			runZipExtractionTest(t, flags, tc.location, tc.tempDir, testFileContent, coordinates, tc.shouldExtract)
+		})
+	}
+}
+
+// Helper function to create a zip file with a single file inside.
+func createZip(t *testing.T, zipPath, filePath string) {
+	zipFile, err := os.Create(zipPath)
+	require.NoError(t, err)
+	defer zipFile.Close()
+
+	writer := zip.NewWriter(zipFile)
+	defer writer.Close()
+
+	fileInfo, err := os.Stat(filePath)
+	require.NoError(t, err)
+
+	fileContent, err := os.ReadFile(filePath)
+	require.NoError(t, err)
+
+	fileHeader, err := zip.FileInfoHeader(fileInfo)
+	require.NoError(t, err)
+
+	fileHeader.Method = zip.Deflate
+
+	fileWriter, err := writer.CreateHeader(fileHeader)
+	require.NoError(t, err)
+
+	_, err = fileWriter.Write(fileContent)
+	require.NoError(t, err)
 }
 
 // saveEnvironment preserves the current environment variables for restoration later.

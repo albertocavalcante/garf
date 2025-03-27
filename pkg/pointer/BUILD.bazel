@@ -10,5 +10,5 @@ go_library(
 go_test(
     name = "pointer_test",
     srcs = ["pointer_test.go"],
-    embed = [":pointer"],
+    deps = [":pointer"],
 )

@@ -16,6 +16,7 @@ type MirrorFlags struct {
 	FromFile    string
 	Raw         bool
 	Properties  []string
+	Unzip       bool
 }
 
 func (f *MirrorFlags) addFlags(cmd *cobra.Command) {
@@ -34,6 +35,12 @@ func (f *MirrorFlags) addFlags(cmd *cobra.Command) {
 		"properties",
 		[]string{},
 		"Properties to attach to the artifact (e.g. type=toolchain platform=windows)",
+	)
+	flags.BoolVar(
+		&f.Unzip,
+		"unzip",
+		false,
+		"Unzip and upload content if source is a zip file with a single file inside",
 	)
 }
 
@@ -65,6 +72,91 @@ func ValidateAndGetConfig(source, destination string) (*core.JFrogConfig, error)
 	}, nil
 }
 
+// processFromLocalFile handles the case when the user specified a local file with --from-file.
+func processFromLocalFile(flags *MirrorFlags, location string) (string, string, bool, error) {
+	// Validate the file exists
+	if _, err := os.Stat(location); os.IsNotExist(err) {
+		return "", "", false, fmt.Errorf("file '%s' not found", location)
+	}
+
+	// Skip creating temp directory if unzipping not needed
+	if !flags.Unzip {
+		return location, "", false, nil
+	}
+
+	// Skip creating temp directory if not a zip file
+	if !core.IsZipFile(location) {
+		return location, "", false, nil
+	}
+
+	// Create temp directory for zip extraction
+	tempDir, err := os.MkdirTemp("", "garf-unzip-")
+	if err != nil {
+		return location, "", false, fmt.Errorf("failed to create temporary directory for unzipping: %w", err)
+	}
+
+	return location, tempDir, true, nil
+}
+
+// processFromRemoteURL handles downloading an artifact from a remote URL.
+func processFromRemoteURL(flags *MirrorFlags) (string, string, bool, error) {
+	location, err := core.DownloadArtifact(flags.Source)
+	if err != nil {
+		return "", "", false, fmt.Errorf("failed to download artifact: %w", err)
+	}
+
+	tempDir := filepath.Dir(location)
+	if tempDir == "" {
+		return location, "", false, fmt.Errorf("unable to determine temporary directory for downloaded file")
+	}
+
+	return location, tempDir, true, nil
+}
+
+// handleZipExtraction handles the extraction of a zip file if the --unzip flag is specified.
+func handleZipExtraction(
+	flags *MirrorFlags,
+	location string,
+	tempDir string,
+	coordinates *artifact.ArtifactCoordinates,
+) (string, error) {
+	// Skip extraction if unzip flag is not set
+	if !flags.Unzip {
+		return location, nil
+	}
+
+	// Skip extraction if file is not a zip
+	if !core.IsZipFile(location) {
+		return location, nil
+	}
+
+	// Configure extraction options
+	extractOptions := &core.ExtractOptions{}
+
+	// Set extraction destination if temp directory is available
+	if tempDir != "" {
+		extractOptions.DestinationDir = tempDir
+	}
+
+	extractedPath, extracted, err := core.ExtractSingleFileFromZip(location, extractOptions)
+	if err != nil {
+		return location, fmt.Errorf("failed to unzip file: %w", err)
+	}
+
+	// No extraction happened
+	if !extracted {
+		return location, nil
+	}
+
+	// Update the artifact name in coordinates to match the extracted file
+	originalName := coordinates.Artifact
+	coordinates.Artifact = filepath.Base(extractedPath)
+
+	fmt.Printf("Extracted %s from %s\n", coordinates.Artifact, originalName)
+
+	return extractedPath, nil
+}
+
 // processAndUploadArtifact handles the downloading and uploading of an artifact.
 func processAndUploadArtifact(flags *MirrorFlags, jfrogConfig *core.JFrogConfig) error {
 	coordinates, err := artifact.ExtractCoordinatesFromURL(flags.Source)
@@ -72,22 +164,37 @@ func processAndUploadArtifact(flags *MirrorFlags, jfrogConfig *core.JFrogConfig)
 		return err
 	}
 
+	// Process the artifact from local file or remote URL
 	var location string
 
 	var tempDir string
 
-	if flags.FromFile != "" {
-		location = flags.FromFile
-	} else {
-		location, err = core.DownloadArtifact(flags.Source)
-		if err != nil {
-			return err
-		}
+	var needsCleanup bool
 
-		tempDir = filepath.Dir(location)
-		defer os.RemoveAll(tempDir)
+	if flags.FromFile != "" {
+		location, tempDir, needsCleanup, err = processFromLocalFile(flags, flags.FromFile)
+	} else {
+		location, tempDir, needsCleanup, err = processFromRemoteURL(flags)
 	}
 
+	if err != nil {
+		return err
+	}
+
+	// Set up cleanup of temporary directories
+	if needsCleanup && tempDir != "" {
+		defer func() {
+			os.RemoveAll(tempDir)
+		}()
+	}
+
+	// Handle unzipping if needed
+	location, err = handleZipExtraction(flags, location, tempDir, coordinates)
+	if err != nil {
+		return err
+	}
+
+	// Upload the artifact
 	jfrogClient, err := core.NewJFrogClient(jfrogConfig)
 	if err != nil {
 		return err
@@ -148,10 +255,30 @@ func NewMirrorCmd() *cobra.Command {
 
 // ConstructTargetPath constructs the target path for uploading the artifact.
 func ConstructTargetPath(repoKey string, coordinates *artifact.ArtifactCoordinates, raw bool) string {
-	mirrorPath := coordinates.UrlPath()
+	// Use raw path if requested
 	if raw {
-		mirrorPath = coordinates.RawUrlPath()
+		return fmt.Sprintf("%s/%s", repoKey, coordinates.RawUrlPath())
 	}
 
-	return fmt.Sprintf("%s/%s", repoKey, mirrorPath)
+	// Otherwise use parsed path
+	return fmt.Sprintf("%s/%s", repoKey, coordinates.UrlPath())
+}
+
+// HandleZipExtractionForTest is an exported version of handleZipExtraction for testing.
+// It's a simple pass-through to the private function to enable unit testing.
+func HandleZipExtractionForTest(
+	flags *MirrorFlags,
+	location string,
+	tempDir string,
+	coordinates *artifact.ArtifactCoordinates,
+) (string, error) {
+	return handleZipExtraction(flags, location, tempDir, coordinates)
+}
+
+type FileNotFoundError struct {
+	Path string
+}
+
+func (e *FileNotFoundError) Error() string {
+	return fmt.Sprintf("file not found: %s", e.Path)
 }

@@ -1,22 +1,41 @@
-package artifact
+package artifact_test
 
 import (
 	"fmt"
 	"net/url"
 	"testing"
+
+	"github.com/albertocavalcante/garf/artifact"
+	"github.com/stretchr/testify/assert"
 )
+
+// verifyCoordinates compares the expected and actual coordinates.
+func verifyCoordinates(t *testing.T, expected, actual *artifact.ArtifactCoordinates) {
+	if actual == nil {
+		t.Errorf("Expected coordinates, got nil")
+
+		return
+	}
+
+	assert.Equal(t, expected.Host, actual.Host, "Host should match")
+	assert.Equal(t, expected.Org, actual.Org, "Org should match")
+	assert.Equal(t, expected.Repo, actual.Repo, "Repo should match")
+	assert.Equal(t, expected.Version, actual.Version, "Version should match")
+	assert.Equal(t, expected.Artifact, actual.Artifact, "Artifact should match")
+	assert.Equal(t, expected.RawPath, actual.RawPath, "RawPath should match")
+}
 
 func TestExtractCoordinatesFromURL(t *testing.T) {
 	type testCase struct {
 		artifactURL         string
-		expectedCoordinates *ArtifactCoordinates
+		expectedCoordinates *artifact.ArtifactCoordinates
 		expectedError       error
 	}
 
 	testCases := []testCase{
 		{
 			artifactURL: "https://github.com/bazelbuild/bazel/releases/download/7.2.1/bazel_nojdk-7.2.1-windows-x86_64.exe",
-			expectedCoordinates: &ArtifactCoordinates{
+			expectedCoordinates: &artifact.ArtifactCoordinates{
 				Host:     "github.com",
 				Org:      "bazelbuild",
 				Repo:     "bazel",
@@ -28,7 +47,7 @@ func TestExtractCoordinatesFromURL(t *testing.T) {
 		},
 		{
 			artifactURL: "https://example.com/path/to/artifact.zip",
-			expectedCoordinates: &ArtifactCoordinates{
+			expectedCoordinates: &artifact.ArtifactCoordinates{
 				Host:     "example.com",
 				Artifact: "artifact.zip",
 				RawPath:  "path/to/artifact.zip",
@@ -48,46 +67,19 @@ func TestExtractCoordinatesFromURL(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.artifactURL, func(t *testing.T) {
-			coordinates, err := ExtractCoordinatesFromURL(tc.artifactURL)
+			coordinates, err := artifact.ExtractCoordinatesFromURL(tc.artifactURL)
 
+			// Check error cases first
 			if tc.expectedError != nil {
-				if err == nil || err.Error() != tc.expectedError.Error() {
-					t.Errorf("Expected error %v, got %v", tc.expectedError, err)
-				}
+				assert.Error(t, err)
+				assert.Equal(t, tc.expectedError.Error(), err.Error())
 
 				return
 			}
 
-			if err != nil {
-				t.Errorf("Unexpected error: %v", err)
-
-				return
-			}
-
-			if coordinates == nil {
-				t.Errorf("Expected coordinates, got nil")
-
-				return
-			}
-
-			if coordinates.Host != tc.expectedCoordinates.Host {
-				t.Errorf("Expected host %s, got %s", tc.expectedCoordinates.Host, coordinates.Host)
-			}
-			if coordinates.Org != tc.expectedCoordinates.Org {
-				t.Errorf("Expected org %s, got %s", tc.expectedCoordinates.Org, coordinates.Org)
-			}
-			if coordinates.Repo != tc.expectedCoordinates.Repo {
-				t.Errorf("Expected repo %s, got %s", tc.expectedCoordinates.Repo, coordinates.Repo)
-			}
-			if coordinates.Version != tc.expectedCoordinates.Version {
-				t.Errorf("Expected version %s, got %s", tc.expectedCoordinates.Version, coordinates.Version)
-			}
-			if coordinates.Artifact != tc.expectedCoordinates.Artifact {
-				t.Errorf("Expected artifact %s, got %s", tc.expectedCoordinates.Artifact, coordinates.Artifact)
-			}
-			if coordinates.RawPath != tc.expectedCoordinates.RawPath {
-				t.Errorf("Expected raw path %s, got %s", tc.expectedCoordinates.RawPath, coordinates.RawPath)
-			}
+			// Check success cases
+			assert.NoError(t, err)
+			verifyCoordinates(t, tc.expectedCoordinates, coordinates)
 		})
 	}
 }
