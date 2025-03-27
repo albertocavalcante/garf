@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "core",
@@ -12,6 +12,14 @@ go_library(
         "@com_github_jfrog_jfrog_client_go//artifactory",
         "@com_github_jfrog_jfrog_client_go//artifactory/auth",
         "@com_github_jfrog_jfrog_client_go//artifactory/services",
+        "@com_github_jfrog_jfrog_client_go//artifactory/services/utils",
         "@com_github_jfrog_jfrog_client_go//config",
     ],
+)
+
+go_test(
+    name = "core_test",
+    srcs = ["jfrog_client_test.go"],
+    embed = [":core"],
+    deps = ["@com_github_stretchr_testify//require"],
 )

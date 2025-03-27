@@ -19,3 +19,14 @@ Instead of:
 ```sh
 go mod tidy -v
 ```
+
+- ALWAYS consider refactoring a function.
+- AVOID increasing the scope of a function, prefer to create another one instead.
+- Write idiomatic Go. Follow Go proverbs.
+- ALWAYS write unit tests and make code testable.
+
+## Libraries
+
+- Use `github.com/stretchr/testify` for testing. Prefer to use the `require` package.
+- Use the `go-get` target to add third-party dependencies. Example `DEP=github.com/stretchr/testify make go-get`. After run `bazel mod tidy`.
+
