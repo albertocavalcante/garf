@@ -23,7 +23,7 @@ tidy:
 .PHONY: tidy
 
 gazelle:
-	bazelisk run @rules_go//go -- run github.com/bazelbuild/bazel-gazelle/cmd/gazelle@latest
+	bazelisk run //:gazelle
 .PHONY: gazelle
 
 go-get:
