@@ -42,13 +42,14 @@ jobs:
           echo "Available bazel targets:"
           bazelisk query 'kind("go_binary", //...)'
           echo "---------------------------------------"
+
       - name: Build and prepare binaries
         id: build
         run: |
-          # Build cross-platform binaries
-          echo "Building cross-platform binaries..."
+          # Build all platform binaries in one command
           bazelisk build //:garf-bin-linux-amd64 //:garf-bin-linux-arm64 //:garf-bin-darwin-amd64 //:garf-bin-darwin-arm64 //:garf-bin-windows-amd64 //:garf-bin-windows-arm64
 
+          
           # Create release directory
           mkdir -p release-binaries
 
@@ -69,6 +70,7 @@ jobs:
           found_binaries=$(find release-binaries -type f | wc -l)
           echo "Found $found_binaries binaries for release:"
           ls -la release-binaries/
+
           if [ "$found_binaries" -eq 0 ]; then
             echo "::warning::No binaries found to upload"
             exit 1
@@ -79,17 +81,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Count how many files we have to upload
-          file_count=$(find release-binaries -type f | wc -l)
-
-          if [ "$file_count" -eq 0 ]; then
-            echo "No binaries to upload, skipping"
-            exit 0
-          fi
-
           # Target tag for upload
           TARGET_TAG="${{ github.event.inputs.tag || github.ref_name }}"
 
           # Upload all binaries at once
-          echo "Uploading $file_count binaries to release $TARGET_TAG"
+          echo "Uploading binaries to release $TARGET_TAG"
           gh release upload "$TARGET_TAG" release-binaries/* --clobber
