@@ -37,6 +37,67 @@ func (f *MirrorFlags) addFlags(cmd *cobra.Command) {
 	)
 }
 
+// ValidateAndGetConfig validates required flags and environment variables and returns a JFrog config.
+func ValidateAndGetConfig(source, destination string) (*core.JFrogConfig, error) {
+	if source == "" || destination == "" {
+		return nil, fmt.Errorf("--source and --destination flags are required")
+	}
+
+	jfrogUrl, ok := os.LookupEnv("JFROG_URL")
+	if !ok {
+		return nil, fmt.Errorf("JFROG_URL environment variable is required")
+	}
+
+	jfrogUser, ok := os.LookupEnv("JFROG_USER")
+	if !ok {
+		return nil, fmt.Errorf("JFROG_USER environment variable is required")
+	}
+
+	jfrogPassword, ok := os.LookupEnv("JFROG_PASSWORD")
+	if !ok {
+		return nil, fmt.Errorf("JFROG_PASSWORD environment variable is required")
+	}
+
+	return &core.JFrogConfig{
+		Url:      jfrogUrl,
+		User:     jfrogUser,
+		Password: jfrogPassword,
+	}, nil
+}
+
+// processAndUploadArtifact handles the downloading and uploading of an artifact.
+func processAndUploadArtifact(flags *MirrorFlags, jfrogConfig *core.JFrogConfig) error {
+	coordinates, err := artifact.ExtractCoordinatesFromURL(flags.Source)
+	if err != nil {
+		return err
+	}
+
+	var location string
+
+	var tempDir string
+
+	if flags.FromFile != "" {
+		location = flags.FromFile
+	} else {
+		location, err = core.DownloadArtifact(flags.Source)
+		if err != nil {
+			return err
+		}
+
+		tempDir = filepath.Dir(location)
+		defer os.RemoveAll(tempDir)
+	}
+
+	jfrogClient, err := core.NewJFrogClient(jfrogConfig)
+	if err != nil {
+		return err
+	}
+
+	targetPath := ConstructTargetPath(flags.Destination, coordinates, flags.Raw)
+
+	return jfrogClient.UploadGenericArtifact(location, targetPath, flags.Properties)
+}
+
 // NewMirrorCmd creates a new cobra.Command for the "mirror" subcommand.
 
 // This subcommand will download an artifact from a source URL and upload it
@@ -66,64 +127,17 @@ func NewMirrorCmd() *cobra.Command {
 		Long: `Mirror will simply download artifacts from a source URL and upload them to a destination URL, 
 		preserving their path.`,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			if flags.Source == "" || flags.Destination == "" {
-				return fmt.Errorf("--source and --destination flags are required")
+			config, err := ValidateAndGetConfig(flags.Source, flags.Destination)
+			if err != nil {
+				return err
 			}
 
-			jfrogUrl, ok := os.LookupEnv("JFROG_URL")
-			if !ok {
-				return fmt.Errorf("JFROG_URL environment variable is required")
-			}
-
-			jfrogUser, ok := os.LookupEnv("JFROG_USER")
-			if !ok {
-				return fmt.Errorf("JFROG_USER environment variable is required")
-			}
-
-			jfrogPassword, ok := os.LookupEnv("JFROG_PASSWORD")
-			if !ok {
-				return fmt.Errorf("JFROG_PASSWORD environment variable is required")
-			}
-
-			jfrogConfig = &core.JFrogConfig{
-				Url:      jfrogUrl,
-				User:     jfrogUser,
-				Password: jfrogPassword,
-			}
+			jfrogConfig = config
 
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			coordinates, err := artifact.ExtractCoordinatesFromURL(flags.Source)
-			if err != nil {
-				return err
-			}
-
-			var location string
-			if flags.FromFile != "" {
-				location = flags.FromFile
-			} else {
-				defer os.RemoveAll(filepath.Dir(location))
-
-				location, err = core.DownloadArtifact(flags.Source)
-				if err != nil {
-					return err
-				}
-			}
-
-			jfrogClient, err := core.NewJFrogClient(jfrogConfig)
-			if err != nil {
-				return err
-			}
-
-			targetPath := constructTargetPath(flags.Destination, coordinates, flags.Raw)
-
-			err = jfrogClient.UploadGenericArtifact(location, targetPath, flags.Properties)
-			if err != nil {
-				return err
-			}
-
-			return nil
+			return processAndUploadArtifact(flags, jfrogConfig)
 		},
 	}
 
@@ -132,8 +146,8 @@ func NewMirrorCmd() *cobra.Command {
 	return cmd
 }
 
-// constructTargetPath constructs the target path for uploading the artifact.
-func constructTargetPath(repoKey string, coordinates *artifact.ArtifactCoordinates, raw bool) string {
+// ConstructTargetPath constructs the target path for uploading the artifact.
+func ConstructTargetPath(repoKey string, coordinates *artifact.ArtifactCoordinates, raw bool) string {
 	mirrorPath := coordinates.UrlPath()
 	if raw {
 		mirrorPath = coordinates.RawUrlPath()
