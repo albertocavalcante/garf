@@ -2,11 +2,18 @@ package core
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/jfrog/jfrog-client-go/artifactory"
 	"github.com/jfrog/jfrog-client-go/artifactory/auth"
 	"github.com/jfrog/jfrog-client-go/artifactory/services"
+	"github.com/jfrog/jfrog-client-go/artifactory/services/utils"
 	"github.com/jfrog/jfrog-client-go/config"
+)
+
+const (
+	// propertyParts is the expected number of parts in a property (key=value).
+	propertyParts = 2
 )
 
 // JFrogConfig contains the required properties to connect to JFrog Artifactory.
@@ -45,7 +52,7 @@ func NewJFrogClient(jc *JFrogConfig) (*JFrogClient, error) {
 }
 
 // UploadGenericArtifact uploads a generic artifact to Artifactory.
-func (c *JFrogClient) UploadGenericArtifact(file, targetPath string) error {
+func (c *JFrogClient) UploadGenericArtifact(file, targetPath string, properties []string) error {
 	opts := artifactory.UploadServiceOptions{
 		FailFast: true,
 	}
@@ -53,6 +60,15 @@ func (c *JFrogClient) UploadGenericArtifact(file, targetPath string) error {
 	params := services.NewUploadParams()
 	params.Pattern = file
 	params.Target = targetPath
+
+	if len(properties) > 0 {
+		targetProps, err := createTargetProperties(properties)
+		if err != nil {
+			return err
+		}
+
+		params.SetTargetProps(targetProps)
+	}
 
 	totalUploaded, totalFailed, err := c.UploadFiles(opts, params)
 	if err != nil {
@@ -63,4 +79,30 @@ func (c *JFrogClient) UploadGenericArtifact(file, targetPath string) error {
 	fmt.Printf("Total failed: %d\n", totalFailed)
 
 	return nil
+}
+
+// createTargetProperties converts string properties to a utils.Properties struct.
+func createTargetProperties(properties []string) (*utils.Properties, error) {
+	targetProps := utils.NewProperties()
+
+	for _, prop := range properties {
+		key, value, err := parseProperty(prop)
+		if err != nil {
+			return nil, err
+		}
+
+		targetProps.AddProperty(key, value)
+	}
+
+	return targetProps, nil
+}
+
+// parseProperty splits a property string into key and value components.
+func parseProperty(prop string) (key, value string, err error) {
+	parts := strings.SplitN(prop, "=", propertyParts)
+	if len(parts) != propertyParts {
+		return "", "", fmt.Errorf("invalid property format '%s', expected 'key=value'", prop)
+	}
+
+	return parts[0], parts[1], nil
 }

@@ -15,6 +15,7 @@ type MirrorFlags struct {
 	Destination string
 	FromFile    string
 	Raw         bool
+	Properties  []string
 }
 
 func (f *MirrorFlags) addFlags(cmd *cobra.Command) {
@@ -27,6 +28,12 @@ func (f *MirrorFlags) addFlags(cmd *cobra.Command) {
 		"raw",
 		false,
 		"Raw Mirror. Don't upload the artifact with the parsed coordinates but the full URL path",
+	)
+	flags.StringArrayVar(
+		&f.Properties,
+		"properties",
+		[]string{},
+		"Properties to attach to the artifact (e.g. type=toolchain platform=windows)",
 	)
 }
 
@@ -111,7 +118,7 @@ func NewMirrorCmd() *cobra.Command {
 
 			targetPath := constructTargetPath(flags.Destination, coordinates, flags.Raw)
 
-			err = jfrogClient.UploadGenericArtifact(location, targetPath)
+			err = jfrogClient.UploadGenericArtifact(location, targetPath, flags.Properties)
 			if err != nil {
 				return err
 			}
