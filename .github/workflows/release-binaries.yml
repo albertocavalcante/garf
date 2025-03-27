@@ -39,20 +39,20 @@ jobs:
         run: |
           # Build all cross-platform targets using bazelisk explicitly
           # This uses the targets created by cross_platform_go_binary in BUILD.bazel
-          bazelisk build //:garf-linux-amd64 //:garf-linux-arm64 //:garf-darwin-amd64 //:garf-darwin-arm64 //:garf-windows-amd64 //:garf-windows-arm64
+          bazelisk build //:garf-bin-linux-amd64 //:garf-bin-linux-arm64 //:garf-bin-darwin-amd64 //:garf-bin-darwin-arm64 //:garf-bin-windows-amd64 //:garf-bin-windows-arm64
 
           # Create a directory for the binaries
           mkdir -p release-binaries
 
           # List all generated binaries to verify they exist
-          find bazel-bin -name "garf-*-*" -type f -executable -o -name "garf-*-*.exe" | grep -v "\.runfiles" | sort
+          find bazel-bin -name "garf-bin-*" -type f -executable -o -name "garf-bin-*.exe" | grep -v "\.runfiles" | sort
 
           # Copy binaries to the release directory with proper naming
           for os in linux darwin windows; do
             for arch in amd64 arm64; do
               if [ "$os" == "windows" ]; then
                 # For Windows binaries
-                src="bazel-bin/garf-${os}-${arch}.exe"
+                src="bazel-bin/garf-bin-${os}-${arch}.exe"
                 if [ -f "$src" ]; then
                   cp "$src" "release-binaries/garf-${VERSION}-${os}-${arch}.exe"
                 else
@@ -60,7 +60,7 @@ jobs:
                 fi
               else
                 # For Linux/Darwin binaries
-                src="bazel-bin/garf-${os}-${arch}"
+                src="bazel-bin/garf-bin-${os}-${arch}"
                 if [ -f "$src" ]; then
                   cp "$src" "release-binaries/garf-${VERSION}-${os}-${arch}"
                 else
