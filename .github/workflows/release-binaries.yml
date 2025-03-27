@@ -29,74 +29,23 @@ jobs:
         id: get_version
         run: |
           # Use the input tag if provided or the release tag
+          # Use the input tag if provided or the release tag
           TAG_REF="${{ github.event.inputs.tag || github.ref_name }}"
           VERSION=${TAG_REF#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Using version: $VERSION from tag: $TAG_REF"
+          echo "Using version: $VERSION from tag: $TAG_REF"
 
       - name: Build and prepare binaries
         id: build
+      - name: Build and prepare binaries
+        id: build
         run: |
-          # Build all cross-platform targets using bazelisk explicitly
           # Build all platform binaries in one command
           bazelisk build //:garf-bin-linux-amd64 //:garf-bin-linux-arm64 //:garf-bin-darwin-amd64 //:garf-bin-darwin-arm64 //:garf-bin-windows-amd64 //:garf-bin-windows-arm64
           
-          # Debug: Show actual Bazel targets
-          echo "Available Bazel targets:"
-          bazelisk query "kind(go_binary, //...)" | sort
-
-          # Debug: List all executables in bazel-bin
-          echo "Contents of bazel-bin (looking for executables):"
-          find bazel-bin -type f -executable | grep -v "\.runfiles" | sort
-          
-          echo "Contents of bazel-bin (looking for Windows .exe files):"
-          find bazel-bin -name "*.exe" | grep -v "\.runfiles" | sort
-          
-          # Create a directory for the binaries
-          
           # Create release directory
           mkdir -p release-binaries
-          
-          # Try to locate the binaries based on naming pattern from the query
-          # Attempt multiple likely paths based on different Bazel output patterns
-          for os in linux darwin windows; do
-            for arch in amd64 arm64; do
-              if [ "$os" == "windows" ]; then 
-                # Try several possible locations for Windows binaries
-                possible_paths=(
-                  "bazel-bin/garf-bin-${os}-${arch}.exe"
-                  "bazel-bin/garf-bin-${os}-${arch}"
-                  "bazel-bin/garf-${os}-${arch}.exe"
-                  "bazel-bin/garf-${os}-${arch}"
-                  "bazel-bin/${os}_${arch}_stripped/garf-bin-${os}-${arch}.exe"
-                  "bazel-bin/${os}_${arch}_stripped/garf-bin-${os}-${arch}"
-                )
-                
-                for src in "${possible_paths[@]}"; do
-                  if [ -f "$src" ]; then
-                    echo "Found Windows binary at: $src"
-                    cp "$src" "release-binaries/garf-${VERSION}-${os}-${arch}.exe"
-                    break
-                  fi
-                done
-              else
-                # Try several possible locations for Linux/Darwin binaries
-                possible_paths=(
-                  "bazel-bin/garf-bin-${os}-${arch}"
-                  "bazel-bin/garf-${os}-${arch}"
-                  "bazel-bin/${os}_${arch}_stripped/garf-bin-${os}-${arch}"
-                  "bazel-bin/${os}_${arch}_stripped/garf-${os}-${arch}"
-                )
-                
-                for src in "${possible_paths[@]}"; do
-                  if [ -f "$src" ]; then
-                    echo "Found ${os}/${arch} binary at: $src"
-                    cp "$src" "release-binaries/garf-${VERSION}-${os}-${arch}"
-                    break
-                  fi
-                done
-              fi
-            done
           
           # Copy binaries with proper naming
           found_binaries=0
@@ -127,9 +76,6 @@ jobs:
             fi
           done
           
-          # List files to be uploaded
-          echo "Files to be uploaded:"
-          
           # Show what we found
           echo "Found $found_binaries binaries for release"
           ls -la release-binaries/
@@ -139,15 +85,26 @@ jobs:
             echo "No binaries found to upload"
             exit 1
           fi
+          
+          # Set output for next step
+          if [ "$found_binaries" -eq 0 ]; then
+            echo "No binaries found to upload"
+            exit 1
+          fi
 
       - name: Upload binaries to release
+        if: steps.build.outcome == 'success'
         if: steps.build.outcome == 'success'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Target tag for upload
+          # Target tag for upload
           TARGET_TAG="${{ github.event.inputs.tag || github.ref_name }}"
           
+          # Upload all binaries at once
+          echo "Uploading binaries to release $TARGET_TAG"
+          gh release upload "$TARGET_TAG" release-binaries/* --clobber
           # Upload all binaries at once
           echo "Uploading binaries to release $TARGET_TAG"
           gh release upload "$TARGET_TAG" release-binaries/* --clobber
