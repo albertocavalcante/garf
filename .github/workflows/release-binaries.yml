@@ -3,6 +3,12 @@ name: Build and Upload Release Binaries
 on:
   release:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag to build binaries for (e.g., v0.1.0)'
+        required: true
+        type: string
 
 jobs:
   upload-binaries:
@@ -11,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Setup Java
         uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12 # v4.7.0
@@ -22,10 +28,12 @@ jobs:
       - name: Extract version from tag
         id: get_version
         run: |
-          # Extract version from the release tag (remove the 'v' prefix if present)
-          VERSION=${GITHUB_REF_NAME#v}
+          # Use the input tag if provided through workflow_dispatch or the GitHub ref
+          TAG_REF="${{ github.event.inputs.tag || github.ref_name }}"
+          # Extract version from the tag (remove the 'v' prefix if present)
+          VERSION=${TAG_REF#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "Extracted version: $VERSION"
+          echo "Extracted version: $VERSION from tag: $TAG_REF"
 
       - name: Build binaries for all platforms
         run: |
@@ -70,10 +78,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Use the input tag if provided through workflow_dispatch or the GitHub ref name
+          TARGET_TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          
           # Upload each binary to the release
           for file in release-binaries/*; do
             if [ -f "$file" ]; then
-              echo "Uploading $file to release ${{ github.ref_name }}"
-              gh release upload ${{ github.ref_name }} "$file"
+              echo "Uploading $file to release $TARGET_TAG"
+              gh release upload "$TARGET_TAG" "$file"
             fi
           done
