@@ -62,7 +62,7 @@ func (c *JFrogClient) UploadGenericArtifact(file, targetPath string, properties 
 	params.Target = targetPath
 
 	if len(properties) > 0 {
-		targetProps, err := createTargetProperties(properties)
+		targetProps, err := CreateTargetProperties(properties)
 		if err != nil {
 			return err
 		}
@@ -81,12 +81,12 @@ func (c *JFrogClient) UploadGenericArtifact(file, targetPath string, properties 
 	return nil
 }
 
-// createTargetProperties converts string properties to a utils.Properties struct.
-func createTargetProperties(properties []string) (*utils.Properties, error) {
+// CreateTargetProperties converts string properties to a utils.Properties struct.
+func CreateTargetProperties(properties []string) (*utils.Properties, error) {
 	targetProps := utils.NewProperties()
 
 	for _, prop := range properties {
-		key, value, err := parseProperty(prop)
+		key, value, err := ParseProperty(prop)
 		if err != nil {
 			return nil, err
 		}
@@ -97,8 +97,8 @@ func createTargetProperties(properties []string) (*utils.Properties, error) {
 	return targetProps, nil
 }
 
-// parseProperty splits a property string into key and value components.
-func parseProperty(prop string) (key, value string, err error) {
+// ParseProperty splits a property string into key and value components.
+func ParseProperty(prop string) (key, value string, err error) {
 	parts := strings.SplitN(prop, "=", propertyParts)
 	if len(parts) != propertyParts {
 		return "", "", fmt.Errorf("invalid property format '%s', expected 'key=value'", prop)

@@ -1,8 +1,9 @@
-package core
+package core_test
 
 import (
 	"testing"
 
+	"github.com/albertocavalcante/garf/core"
 	"github.com/stretchr/testify/require"
 )
 
@@ -49,7 +50,7 @@ func TestParseProperty(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			key, value, err := parseProperty(tc.propertyStr)
+			key, value, err := core.ParseProperty(tc.propertyStr)
 
 			if tc.shouldErr {
 				require.Error(t, err, "Expected error for invalid input")
@@ -110,7 +111,7 @@ func TestCreateTargetProperties(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			props, err := createTargetProperties(tc.properties)
+			props, err := core.CreateTargetProperties(tc.properties)
 
 			if tc.shouldErr {
 				require.Error(t, err, "Expected error for invalid input")

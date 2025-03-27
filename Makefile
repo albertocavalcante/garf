@@ -30,6 +30,6 @@ go-get:
 	bazelisk run @rules_go//go -- get -u $(DEP)
 .PHONY: go-get
 
-golangci-lint:
+lint:
 	bazelisk run @rules_go//go -- run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.0.2 run
 .PHONY: golangci-lint

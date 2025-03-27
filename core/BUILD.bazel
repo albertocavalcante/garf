@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "jfrog_client.go",
         "static_client.go",
+        "unzip.go",
     ],
     importpath = "github.com/albertocavalcante/garf/core",
     visibility = ["//visibility:public"],
@@ -19,7 +20,12 @@ go_library(
 
 go_test(
     name = "core_test",
-    srcs = ["jfrog_client_test.go"],
-    embed = [":core"],
-    deps = ["@com_github_stretchr_testify//require"],
+    srcs = [
+        "jfrog_client_test.go",
+        "unzip_test.go",
+    ],
+    deps = [
+        ":core",
+        "@com_github_stretchr_testify//require",
+    ],
 )
