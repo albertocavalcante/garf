@@ -38,38 +38,64 @@ jobs:
       - name: Build binaries for all platforms
         run: |
           # Build all cross-platform targets using bazelisk explicitly
-          # This uses the targets created by cross_platform_go_binary in BUILD.bazel
           bazelisk build //:garf-bin-linux-amd64 //:garf-bin-linux-arm64 //:garf-bin-darwin-amd64 //:garf-bin-darwin-arm64 //:garf-bin-windows-amd64 //:garf-bin-windows-arm64
+          
+          # Debug: Show actual Bazel targets
+          echo "Available Bazel targets:"
+          bazelisk query "kind(go_binary, //...)" | sort
 
+          # Debug: List all executables in bazel-bin
+          echo "Contents of bazel-bin (looking for executables):"
+          find bazel-bin -type f -executable | grep -v "\.runfiles" | sort
+          
+          echo "Contents of bazel-bin (looking for Windows .exe files):"
+          find bazel-bin -name "*.exe" | grep -v "\.runfiles" | sort
+          
           # Create a directory for the binaries
           mkdir -p release-binaries
-
-          # List all generated binaries to verify they exist
-          find bazel-bin -name "garf-bin-*" -type f -executable -o -name "garf-bin-*.exe" | grep -v "\.runfiles" | sort
-
-          # Copy binaries to the release directory with proper naming
+          
+          # Try to locate the binaries based on naming pattern from the query
+          # Attempt multiple likely paths based on different Bazel output patterns
           for os in linux darwin windows; do
             for arch in amd64 arm64; do
-              if [ "$os" == "windows" ]; then
-                # For Windows binaries
-                src="bazel-bin/garf-bin-${os}-${arch}.exe"
-                if [ -f "$src" ]; then
-                  cp "$src" "release-binaries/garf-${VERSION}-${os}-${arch}.exe"
-                else
-                  echo "Warning: Expected binary not found at $src"
-                fi
+              if [ "$os" == "windows" ]; then 
+                # Try several possible locations for Windows binaries
+                possible_paths=(
+                  "bazel-bin/garf-bin-${os}-${arch}.exe"
+                  "bazel-bin/garf-bin-${os}-${arch}"
+                  "bazel-bin/garf-${os}-${arch}.exe"
+                  "bazel-bin/garf-${os}-${arch}"
+                  "bazel-bin/${os}_${arch}_stripped/garf-bin-${os}-${arch}.exe"
+                  "bazel-bin/${os}_${arch}_stripped/garf-bin-${os}-${arch}"
+                )
+                
+                for src in "${possible_paths[@]}"; do
+                  if [ -f "$src" ]; then
+                    echo "Found Windows binary at: $src"
+                    cp "$src" "release-binaries/garf-${VERSION}-${os}-${arch}.exe"
+                    break
+                  fi
+                done
               else
-                # For Linux/Darwin binaries
-                src="bazel-bin/garf-bin-${os}-${arch}"
-                if [ -f "$src" ]; then
-                  cp "$src" "release-binaries/garf-${VERSION}-${os}-${arch}"
-                else
-                  echo "Warning: Expected binary not found at $src"
-                fi
+                # Try several possible locations for Linux/Darwin binaries
+                possible_paths=(
+                  "bazel-bin/garf-bin-${os}-${arch}"
+                  "bazel-bin/garf-${os}-${arch}"
+                  "bazel-bin/${os}_${arch}_stripped/garf-bin-${os}-${arch}"
+                  "bazel-bin/${os}_${arch}_stripped/garf-${os}-${arch}"
+                )
+                
+                for src in "${possible_paths[@]}"; do
+                  if [ -f "$src" ]; then
+                    echo "Found ${os}/${arch} binary at: $src"
+                    cp "$src" "release-binaries/garf-${VERSION}-${os}-${arch}"
+                    break
+                  fi
+                done
               fi
             done
           done
-
+          
           # List files to be uploaded
           echo "Files to be uploaded:"
           ls -la release-binaries/
