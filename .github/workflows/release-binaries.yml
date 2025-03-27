@@ -12,7 +12,13 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ github.ref }}
-      
+
+      - name: Setup Java
+        uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12 # v4.7.0
+        with:
+          distribution: "zulu"
+          java-version: "21"
+
       - name: Extract version from tag
         id: get_version
         run: |
@@ -20,19 +26,19 @@ jobs:
           VERSION=${GITHUB_REF_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Extracted version: $VERSION"
-      
+
       - name: Build binaries for all platforms
         run: |
           # Build all cross-platform targets using bazelisk explicitly
           # This uses the targets created by cross_platform_go_binary in BUILD.bazel
           bazelisk build //:garf-linux-amd64 //:garf-linux-arm64 //:garf-darwin-amd64 //:garf-darwin-arm64 //:garf-windows-amd64 //:garf-windows-arm64
-          
+
           # Create a directory for the binaries
           mkdir -p release-binaries
-          
+
           # List all generated binaries to verify they exist
           find bazel-bin -name "garf-*-*" -type f -executable -o -name "garf-*-*.exe" | grep -v "\.runfiles" | sort
-          
+
           # Copy binaries to the release directory with proper naming
           for os in linux darwin windows; do
             for arch in amd64 arm64; do
@@ -55,11 +61,11 @@ jobs:
               fi
             done
           done
-          
+
           # List files to be uploaded
           echo "Files to be uploaded:"
           ls -la release-binaries/
-      
+
       - name: Upload binaries to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
