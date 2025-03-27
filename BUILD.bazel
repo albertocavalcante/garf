@@ -1,5 +1,6 @@
 load("@gazelle//:def.bzl", "gazelle")
 load("@rules_go//go:def.bzl", "go_binary", "go_library")
+load("//private:go_binary.bzl", "cross_platform_go_binary")
 load("//tools/nogo:nogo.bzl", "setup_nogo")
 
 alias(
@@ -29,36 +30,7 @@ go_binary(
     visibility = ["//visibility:public"],
 )
 
-[
-    go_binary(
-        name = "garf-%s-%s" % (os, arch),
-        embed = [":garf_lib"],
-        gc_linkopts = [
-            "-s",
-            "-w",
-        ],
-        goarch = arch,
-        goos = os,
-        pure = "on",
-        visibility = ["//visibility:public"],
-    )
-    for os, arch in [
-        ("linux", "amd64"),
-        ("linux", "arm64"),
-    ]
-]
-
-[
-    go_binary(
-        name = "garf-%s-%s" % (os, arch),
-        embed = [":garf_lib"],
-        goarch = arch,
-        goos = os,
-        pure = "on",
-        visibility = ["//visibility:public"],
-    )
-    for os, arch in [
-        ("windows", "amd64"),
-        ("windows", "arm64"),
-    ]
-]
+cross_platform_go_binary(
+    name = "garf-bin",
+    embed = [":garf_lib"],
+)

@@ -1,0 +1,73 @@
+name: Build and Upload Release Binaries
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  upload-binaries:
+    name: Build and Upload Binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.ref }}
+      
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          # Extract version from the release tag (remove the 'v' prefix if present)
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Extracted version: $VERSION"
+      
+      - name: Build binaries for all platforms
+        run: |
+          # Build all cross-platform targets using bazelisk explicitly
+          # This uses the targets created by cross_platform_go_binary in BUILD.bazel
+          bazelisk build //:garf-linux-amd64 //:garf-linux-arm64 //:garf-darwin-amd64 //:garf-darwin-arm64 //:garf-windows-amd64 //:garf-windows-arm64
+          
+          # Create a directory for the binaries
+          mkdir -p release-binaries
+          
+          # List all generated binaries to verify they exist
+          find bazel-bin -name "garf-*-*" -type f -executable -o -name "garf-*-*.exe" | grep -v "\.runfiles" | sort
+          
+          # Copy binaries to the release directory with proper naming
+          for os in linux darwin windows; do
+            for arch in amd64 arm64; do
+              if [ "$os" == "windows" ]; then
+                # For Windows binaries
+                src="bazel-bin/garf-${os}-${arch}.exe"
+                if [ -f "$src" ]; then
+                  cp "$src" "release-binaries/garf-${VERSION}-${os}-${arch}.exe"
+                else
+                  echo "Warning: Expected binary not found at $src"
+                fi
+              else
+                # For Linux/Darwin binaries
+                src="bazel-bin/garf-${os}-${arch}"
+                if [ -f "$src" ]; then
+                  cp "$src" "release-binaries/garf-${VERSION}-${os}-${arch}"
+                else
+                  echo "Warning: Expected binary not found at $src"
+                fi
+              fi
+            done
+          done
+          
+          # List files to be uploaded
+          echo "Files to be uploaded:"
+          ls -la release-binaries/
+      
+      - name: Upload binaries to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Upload each binary to the release
+          for file in release-binaries/*; do
+            if [ -f "$file" ]; then
+              echo "Uploading $file to release ${{ github.ref_name }}"
+              gh release upload ${{ github.ref_name }} "$file"
+            fi
+          done
