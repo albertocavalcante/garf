@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'The tag to build binaries for (e.g., v0.1.0)'
+        description: "The tag to build binaries for (e.g., v0.1.0)"
         required: true
         type: string
 
@@ -29,11 +29,9 @@ jobs:
         id: get_version
         run: |
           # Use the input tag if provided or the release tag
-          # Use the input tag if provided or the release tag
           TAG_REF="${{ github.event.inputs.tag || github.ref_name }}"
           VERSION=${TAG_REF#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "Using version: $VERSION from tag: $TAG_REF"
           echo "Using version: $VERSION from tag: $TAG_REF"
 
       - name: List available targets
@@ -42,31 +40,28 @@ jobs:
           echo "Available bazel targets:"
           bazelisk query 'kind("go_binary", //...)'
           echo "---------------------------------------"
-
-      - name: Build and prepare binaries
-        id: build
       - name: Build and prepare binaries
         id: build
         run: |
           set -x  # Enable debugging
-          
+
           # Attempt to build all targets
           echo "Building cross-platform binaries..."
           bazelisk build //:garf-bin-linux-amd64 //:garf-bin-linux-arm64 //:garf-bin-darwin-amd64 //:garf-bin-darwin-arm64 //:garf-bin-windows-amd64 //:garf-bin-windows-arm64 || echo "Some targets may have failed to build"
-          
+
           # Show what Bazel actually produced
           echo "Listing bazel-bin directory contents:"
           find bazel-bin -type f -name "garf-bin_*" | sort
-          
+
           # Create release directory
           mkdir -p release-binaries
-          
+
           # Copy binaries with proper naming
           found_binaries=0
-          
+
           # Platforms to build for
           platforms=("linux:amd64" "linux:arm64" "darwin:amd64" "darwin:arm64" "windows:amd64" "windows:arm64")
-          
+
           for platform in "${platforms[@]}"; do
             os=${platform%%:*}
             arch=${platform##*:}
@@ -111,17 +106,17 @@ jobs:
               echo "✗ ${os}/${arch}: Binary not found with any of the expected patterns"
             fi
           done
-          
+
           # Show what we found
           echo "Found $found_binaries binaries for release"
           ls -la release-binaries/
-          
+
           # Continue even if we don't have all binaries
           # Just warn if we have none
           if [ "$found_binaries" -eq 0 ]; then
             echo "::warning::No binaries found to upload"
           fi
-          
+
           # Set output for next step
           if [ "$found_binaries" -eq 0 ]; then
             echo "No binaries found to upload"
@@ -130,25 +125,20 @@ jobs:
 
       - name: Upload binaries to release
         if: steps.build.outcome == 'success'
-        if: steps.build.outcome == 'success'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Count how many files we have to upload
           file_count=$(find release-binaries -type f | wc -l)
-          
+
           if [ "$file_count" -eq 0 ]; then
             echo "No binaries to upload, skipping"
             exit 0
           fi
-          
-          # Target tag for upload
+
           # Target tag for upload
           TARGET_TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          
+
           # Upload all binaries at once
           echo "Uploading $file_count binaries to release $TARGET_TAG"
-          gh release upload "$TARGET_TAG" release-binaries/* --clobber
-          # Upload all binaries at once
-          echo "Uploading binaries to release $TARGET_TAG"
           gh release upload "$TARGET_TAG" release-binaries/* --clobber
