@@ -29,11 +29,9 @@ jobs:
         id: get_version
         run: |
           # Use the input tag if provided or the release tag
-          # Use the input tag if provided or the release tag
           TAG_REF="${{ github.event.inputs.tag || github.ref_name }}"
           VERSION=${TAG_REF#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "Using version: $VERSION from tag: $TAG_REF"
           echo "Using version: $VERSION from tag: $TAG_REF"
 
       - name: List available targets
