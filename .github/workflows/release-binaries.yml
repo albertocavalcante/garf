@@ -43,83 +43,34 @@ jobs:
       - name: Build and prepare binaries
         id: build
         run: |
-          set -x  # Enable debugging
-
-          # Attempt to build all targets
+          # Build cross-platform binaries
           echo "Building cross-platform binaries..."
-          bazelisk build //:garf-bin-linux-amd64 //:garf-bin-linux-arm64 //:garf-bin-darwin-amd64 //:garf-bin-darwin-arm64 //:garf-bin-windows-amd64 //:garf-bin-windows-arm64 || echo "Some targets may have failed to build"
-
-          # Show what Bazel actually produced
-          echo "Listing bazel-bin directory contents:"
-          find bazel-bin -type f -name "garf-bin_*" | sort
+          bazelisk build //:garf-bin-linux-amd64 //:garf-bin-linux-arm64 //:garf-bin-darwin-amd64 //:garf-bin-darwin-arm64 //:garf-bin-windows-amd64 //:garf-bin-windows-arm64
 
           # Create release directory
           mkdir -p release-binaries
 
-          # Copy binaries with proper naming
-          found_binaries=0
+          # Find the actual binary locations by querying bazel
+          echo "Locating binaries..."
+          bazelisk build //:garf-bin-linux-amd64 --show_result=all
 
-          # Platforms to build for
-          platforms=("linux:amd64" "linux:arm64" "darwin:amd64" "darwin:arm64" "windows:amd64" "windows:arm64")
+          # Direct copy approach - these paths match the Bazel output pattern
+          # from the cross_platform_go_binary macro defined in private/go_binary.bzl
+          cp -v $(bazelisk info bazel-bin)/garf-bin_linux_amd64 release-binaries/garf-${VERSION}-linux-amd64
+          cp -v $(bazelisk info bazel-bin)/garf-bin_linux_arm64 release-binaries/garf-${VERSION}-linux-arm64
+          cp -v $(bazelisk info bazel-bin)/garf-bin_darwin_amd64 release-binaries/garf-${VERSION}-darwin-amd64
+          cp -v $(bazelisk info bazel-bin)/garf-bin_darwin_arm64 release-binaries/garf-${VERSION}-darwin-arm64
+          cp -v $(bazelisk info bazel-bin)/garf-bin_windows_amd64.exe release-binaries/garf-${VERSION}-windows-amd64.exe
+          cp -v $(bazelisk info bazel-bin)/garf-bin_windows_arm64.exe release-binaries/garf-${VERSION}-windows-arm64.exe
 
-          for platform in "${platforms[@]}"; do
-            os=${platform%%:*}
-            arch=${platform##*:}
-            
-            # Define possible source paths - Bazel can use different output patterns
-            if [ "$os" == "windows" ]; then
-              source_patterns=(
-                "bazel-bin/garf-bin_${os}_${arch}.exe"
-                "bazel-bin/${os}_${arch}-fastbuild/garf-bin_${os}_${arch}.exe"
-                "bazel-out/${os}_${arch}-fastbuild/bin/garf-bin_${os}_${arch}.exe"
-                "bazel-out/*-fastbuild/bin/garf-bin_${os}_${arch}.exe"
-              )
-              dst="release-binaries/garf-${VERSION}-${os}-${arch}.exe"
-            else
-              source_patterns=(
-                "bazel-bin/garf-bin_${os}_${arch}"
-                "bazel-bin/${os}_${arch}-fastbuild/garf-bin_${os}_${arch}"
-                "bazel-out/${os}_${arch}-fastbuild/bin/garf-bin_${os}_${arch}"
-                "bazel-out/*-fastbuild/bin/garf-bin_${os}_${arch}"
-              )
-              dst="release-binaries/garf-${VERSION}-${os}-${arch}"
-            fi
-            
-            # Try to find the binary using different patterns
-            binary_found=false
-            for pattern in "${source_patterns[@]}"; do
-              # Use find to locate the file
-              found_files=$(find bazel-bin bazel-out -type f -path "${pattern}" 2>/dev/null)
-              
-              if [ -n "$found_files" ]; then
-                # Take the first match if multiple are found
-                src=$(echo "$found_files" | head -n 1)
-                cp "$src" "$dst"
-                echo "✓ ${os}/${arch}: Copied from $src to $(basename "$dst")"
-                found_binaries=$((found_binaries+1))
-                binary_found=true
-                break
-              fi
-            done
-            
-            if [ "$binary_found" == "false" ]; then
-              echo "✗ ${os}/${arch}: Binary not found with any of the expected patterns"
-            fi
-          done
-
-          # Show what we found
-          echo "Found $found_binaries binaries for release"
+          # Count and show found binaries
+          found_binaries=$(find release-binaries -type f | wc -l)
+          echo "Found $found_binaries binaries for release:"
           ls -la release-binaries/
 
-          # Continue even if we don't have all binaries
-          # Just warn if we have none
+          # Fail if no binaries were found
           if [ "$found_binaries" -eq 0 ]; then
             echo "::warning::No binaries found to upload"
-          fi
-
-          # Set output for next step
-          if [ "$found_binaries" -eq 0 ]; then
-            echo "No binaries found to upload"
             exit 1
           fi
 
