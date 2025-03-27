@@ -10,6 +10,9 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: write
+
 jobs:
   upload-binaries:
     name: Build and Upload Binaries
@@ -47,14 +50,13 @@ jobs:
           # Build all platform binaries in one command
           bazelisk build //:garf-bin-linux-amd64 //:garf-bin-linux-arm64 //:garf-bin-darwin-amd64 //:garf-bin-darwin-arm64 //:garf-bin-windows-amd64 //:garf-bin-windows-arm64
 
-          
           # Create release directory
           mkdir -p release-binaries
 
           # Find the actual binary locations by querying bazel
           echo "Locating binaries..."
           echo "Using bazel-bin location: $(bazelisk info bazel-bin)"
-          
+
           # Direct copy approach - these paths match the Bazel output pattern
           # from the cross_platform_go_binary macro defined in private/go_binary.bzl
           cp -v $(bazelisk info bazel-bin)/garf-bin_linux_amd64 release-binaries/garf-${VERSION}-linux-amd64
