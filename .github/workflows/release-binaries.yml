@@ -29,9 +29,11 @@ jobs:
         id: get_version
         run: |
           # Use the input tag if provided or the release tag
+          # Use the input tag if provided or the release tag
           TAG_REF="${{ github.event.inputs.tag || github.ref_name }}"
           VERSION=${TAG_REF#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Using version: $VERSION from tag: $TAG_REF"
           echo "Using version: $VERSION from tag: $TAG_REF"
 
       - name: List available targets
@@ -67,8 +69,6 @@ jobs:
           found_binaries=$(find release-binaries -type f | wc -l)
           echo "Found $found_binaries binaries for release:"
           ls -la release-binaries/
-
-          # Fail if no binaries were found
           if [ "$found_binaries" -eq 0 ]; then
             echo "::warning::No binaries found to upload"
             exit 1
