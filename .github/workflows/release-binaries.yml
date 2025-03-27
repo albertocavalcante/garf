@@ -53,8 +53,8 @@ jobs:
 
           # Find the actual binary locations by querying bazel
           echo "Locating binaries..."
-          bazelisk build //:garf-bin-linux-amd64 --show_result=all
-
+          echo "Using bazel-bin location: $(bazelisk info bazel-bin)"
+          
           # Direct copy approach - these paths match the Bazel output pattern
           # from the cross_platform_go_binary macro defined in private/go_binary.bzl
           cp -v $(bazelisk info bazel-bin)/garf-bin_linux_amd64 release-binaries/garf-${VERSION}-linux-amd64
