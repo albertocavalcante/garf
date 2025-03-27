@@ -1,0 +1,10 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "bazel",
+      "bump-minor-pre-major": true,
+      "versioning": "default",
+      "include-v-in-tag": true
+    }
+  }
+} 
