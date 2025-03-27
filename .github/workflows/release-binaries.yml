@@ -50,7 +50,6 @@ jobs:
           # Build all platform binaries in one command
           bazelisk build //:garf-bin-linux-amd64 //:garf-bin-linux-arm64 //:garf-bin-darwin-amd64 //:garf-bin-darwin-arm64 //:garf-bin-windows-amd64 //:garf-bin-windows-arm64
 
-
           # Create release directory
           mkdir -p release-binaries
 
