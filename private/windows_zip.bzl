@@ -16,9 +16,10 @@ def windows_bin_zip(name, binary_target, dev_version = "0.0.0", visibility = Non
         dev_version: Default version to use for development builds (defaults to "0.0.0")
         visibility: Visibility specification for the generated targets
     """
+
     # Extract arch from target name (assuming format "garf-bin-windows-amd64" or similar)
     arch = binary_target.split("-")[-1]
-    
+
     # Copy the binary to a predictable name for renaming
     native.genrule(
         name = name + "_renamed_binary",
@@ -30,7 +31,7 @@ def windows_bin_zip(name, binary_target, dev_version = "0.0.0", visibility = Non
         }),
         executable = False,
     )
-    
+
     # Create mapping for the renamed file
     pkg_files(
         name = name + "_files",
@@ -42,13 +43,13 @@ def windows_bin_zip(name, binary_target, dev_version = "0.0.0", visibility = Non
             name + "_renamed.exe": "garf-" + dev_version + "-windows-" + arch + ".exe",
         },
     )
-    
+
     # Group all files for the package
     pkg_filegroup(
         name = name + "_pkg_files",
         srcs = [":" + name + "_files"],
     )
-    
+
     # Create the final ZIP package - use a clean output name
     pkg_zip(
         name = name,
@@ -61,10 +62,10 @@ def windows_bin_zip(name, binary_target, dev_version = "0.0.0", visibility = Non
 
 def windows_bin_zips(name, base_name = None, arches = None, dev_version = "0.0.0", visibility = None):
     """Creates ZIP archives for Windows binaries across multiple architectures.
-    
+
     This is a convenience wrapper around windows_bin_zip that creates ZIP packages
     for all specified Windows architectures with a single function call.
-    
+
     Args:
         name: A unique name for this target (required by Bazel convention)
         base_name: Base name for binaries (e.g., "garf-bin"). Defaults to name if not provided.
@@ -74,10 +75,10 @@ def windows_bin_zips(name, base_name = None, arches = None, dev_version = "0.0.0
     """
     if base_name == None:
         base_name = name
-        
+
     if arches == None:
         arches = ["amd64", "arm64"]
-        
+
     for arch in arches:
         windows_bin_zip(
             name = base_name + "-windows-" + arch + "-zip",
