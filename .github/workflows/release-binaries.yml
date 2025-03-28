@@ -48,7 +48,7 @@ jobs:
         id: build
         run: |
           # Build all platform binaries in one command
-          bazelisk build //:garf-bin-linux-amd64 //:garf-bin-linux-arm64 //:garf-bin-darwin-amd64 //:garf-bin-darwin-arm64 //:garf-bin-windows-amd64 //:garf-bin-windows-arm64
+          bazelisk build //:garf-bin-linux-amd64 //:garf-bin-linux-arm64 //:garf-bin-darwin-amd64 //:garf-bin-darwin-arm64 //:garf-bin-windows-amd64 //:garf-bin-windows-arm64 //:windows-zips
 
           # Create release directory
           mkdir -p release-binaries
@@ -65,6 +65,11 @@ jobs:
           cp -v $(bazelisk info bazel-bin)/garf-bin_darwin_arm64 release-binaries/garf-${VERSION}-darwin-arm64
           cp -v $(bazelisk info bazel-bin)/garf-bin_windows_amd64.exe release-binaries/garf-${VERSION}-windows-amd64.exe
           cp -v $(bazelisk info bazel-bin)/garf-bin_windows_arm64.exe release-binaries/garf-${VERSION}-windows-arm64.exe
+
+          # Copy the ZIP files to release directory with proper version in the filename
+          for arch in "amd64" "arm64"; do
+            cp -v "$(bazelisk info bazel-bin)/garf-bin-windows-$arch.zip" "release-binaries/garf-${VERSION}-windows-$arch.zip"
+          done
 
           # Count and show found binaries
           found_binaries=$(find release-binaries -type f | wc -l)

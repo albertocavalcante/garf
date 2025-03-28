@@ -1,6 +1,7 @@
 load("@gazelle//:def.bzl", "gazelle")
 load("@rules_go//go:def.bzl", "go_binary", "go_library")
 load("//private:go_binary.bzl", "cross_platform_go_binary")
+load("//private:windows_zip.bzl", "windows_bin_zips")
 load("//tools/nogo:nogo.bzl", "setup_nogo")
 
 alias(
@@ -33,4 +34,14 @@ go_binary(
 cross_platform_go_binary(
     name = "garf-bin",
     embed = [":garf_lib"],
+)
+
+# Create ZIP packages for all Windows architectures with a single call
+windows_bin_zips(
+    name = "windows-zips",
+    base_name = "garf-bin",
+    # Uncomment to override the default architectures
+    # arches = ["amd64", "arm64"],
+    # Uncomment to override the development version
+    # dev_version = "1.2.3",
 )
