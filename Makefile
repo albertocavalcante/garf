@@ -35,5 +35,5 @@ go-get:
 .PHONY: go-get
 
 lint:
-	bazelisk run @rules_go//go -- run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.0.2 run
+	bazelisk run @rules_go//go -- run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.0.2 run --fix
 .PHONY: golangci-lint
