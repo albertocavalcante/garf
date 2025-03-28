@@ -7,7 +7,6 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/core",
-        "@com_github_sirupsen_logrus//:logrus",
         "@in_gopkg_yaml_v3//:yaml_v3",
     ],
 )
@@ -16,6 +15,8 @@ go_test(
     name = "config_test",
     size = "small",
     srcs = ["config_test.go"],
-    embed = [":config"],
-    deps = ["@com_github_stretchr_testify//require"],
+    deps = [
+        ":config",
+        "@com_github_stretchr_testify//require",
+    ],
 )

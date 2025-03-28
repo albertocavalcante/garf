@@ -23,8 +23,8 @@ go_test(
     name = "mirror_test",
     size = "small",
     srcs = ["mirror_test.go"],
-    embed = [":mirror"],
     deps = [
+        ":mirror",
         "//pkg/core",
         "@com_github_stretchr_testify//require",
     ],

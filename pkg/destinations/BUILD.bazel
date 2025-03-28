@@ -15,8 +15,8 @@ go_test(
     name = "destinations_test",
     size = "small",
     srcs = ["jfrog_test.go"],
-    embed = [":destinations"],
     deps = [
+        ":destinations",
         "//pkg/core",
         "@com_github_sirupsen_logrus//:logrus",
         "@com_github_stretchr_testify//require",

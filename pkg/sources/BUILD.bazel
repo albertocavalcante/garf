@@ -15,8 +15,8 @@ go_test(
     name = "sources_test",
     size = "small",
     srcs = ["github_test.go"],
-    embed = [":sources"],
     deps = [
+        ":sources",
         "//pkg/core",
         "@com_github_stretchr_testify//require",
     ],

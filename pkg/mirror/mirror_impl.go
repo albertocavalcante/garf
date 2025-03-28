@@ -77,16 +77,13 @@ func (m *DefaultMirror) AddDestination(name string, destination core.Destination
 }
 
 // processArtifact processes a single artifact using the first available source and destination.
-func (m *DefaultMirror) processArtifact(
-	ctx context.Context,
-	artifact *core.Artifact,
-	opts *core.MirrorOptions,
-) MirrorResult {
-	m.mu.RLock()
+func (m *DefaultMirror) processArtifact(ctx context.Context, artifact *core.Artifact, opts *core.MirrorOptions) MirrorResult {
+	// Get the first available source and destination
 	var source core.Source
 
 	var destination core.Destination
 
+	m.mu.RLock()
 	for _, s := range m.sources {
 		source = s
 
@@ -100,18 +97,64 @@ func (m *DefaultMirror) processArtifact(
 	}
 	m.mu.RUnlock()
 
-	if source == nil || destination == nil {
+	if source == nil {
 		return MirrorResult{
 			Artifact: artifact,
-			Error:    fmt.Errorf("no source or destination configured"),
+			Error:    fmt.Errorf("no source available"),
 		}
 	}
 
-	err := ProcessAndUploadArtifact(ctx, m.logger, artifact, source, []core.Destination{destination}, opts)
+	// Skip destination check if in dry run mode
+	if !opts.DryRun && destination == nil {
+		return MirrorResult{
+			Artifact: artifact,
+			Error:    fmt.Errorf("no destination available"),
+		}
+	}
+
+	// Download the artifact
+	content, err := source.Get(ctx, artifact)
+	if err != nil {
+		return MirrorResult{
+			Artifact: artifact,
+			Error:    fmt.Errorf("failed to get artifact: %w", err),
+		}
+	}
+	defer content.Close()
+
+	// If in dry run mode, skip upload
+	if opts.DryRun {
+		if opts.DryRunMode == "all" {
+			m.logger.WithFields(logrus.Fields{
+				"artifact": artifact.Name,
+				"mode":     opts.DryRunMode,
+			}).Info("Dry run: skipping upload")
+
+			return MirrorResult{
+				Artifact: artifact,
+			}
+		}
+		// For "upload" mode, we still want to process the artifact but skip the actual upload
+		m.logger.WithFields(logrus.Fields{
+			"artifact": artifact.Name,
+			"mode":     opts.DryRunMode,
+		}).Info("Dry run: simulating upload")
+
+		return MirrorResult{
+			Artifact: artifact,
+		}
+	}
+
+	// Upload the artifact
+	if err := destination.Put(ctx, artifact, content); err != nil {
+		return MirrorResult{
+			Artifact: artifact,
+			Error:    fmt.Errorf("failed to put artifact: %w", err),
+		}
+	}
 
 	return MirrorResult{
 		Artifact: artifact,
-		Error:    err,
 	}
 }
 
