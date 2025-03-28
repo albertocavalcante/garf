@@ -4,6 +4,8 @@ import %workspace%/tools/rc/correctness.bazelrc
 import %workspace%/tools/rc/performance.bazelrc
 import %workspace%/.buildbuddy.bazelrc
 
+startup --digest_function=blake3
+
 common --enable_platform_specific_config
 
 # Experimental Flags
