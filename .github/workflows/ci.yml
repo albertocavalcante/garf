@@ -37,6 +37,7 @@ jobs:
         run: |
           bazelisk build \
             --config=ci \
+            --config=remote-cache \
             --remote_header=x-buildbuddy-api-key=${{ secrets.BUILDBUDDY_API_KEY }} \
             //...
 
@@ -45,5 +46,6 @@ jobs:
         run: |
           bazelisk test \
             --config=ci \
+            --config=remote-cache \
             --remote_header=x-buildbuddy-api-key=${{ secrets.BUILDBUDDY_API_KEY }} \
             //...

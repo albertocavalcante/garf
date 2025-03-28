@@ -2,8 +2,14 @@
 # https://bazel.build/reference/command-line-reference
 import %workspace%/tools/rc/correctness.bazelrc
 import %workspace%/tools/rc/performance.bazelrc
-import %workspace%/.buildbuddy.bazelrc
+import %workspace%/.cpp.bazelrc
+import %workspace%/.go.bazelrc
+import %workspace%/.debug.bazelrc
+import %workspace%/.remote-cache.bazelrc
+import %workspace%/.ci.bazelrc
 
+# Startup Options
+# https://bazel.build/reference/command-line-reference#startup-options
 startup --digest_function=blake3
 
 common --enable_platform_specific_config
@@ -11,19 +17,6 @@ common --enable_platform_specific_config
 # Experimental Flags
 common --experimental_isolated_extension_usages
 
-# Hermetic C++ Toolchain
-build --action_env BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
-
-# Pure Go Workaround
-# https://github.com/bazel-contrib/rules_go/issues/4154#issuecomment-2433739889
-build --define=gotags=purego
-
-# Startup Options
-# https://bazel.build/reference/command-line-reference#startup-options
-# startup --server_javabase=/usr/lib/jvm/java-21-openjdk-amd64
-
-# Toolchain Debugging
-# https://bazel.build/extending/toolchains#debugging-toolchains
-build:debug --toolchain_resolution_debug=".*"
+build --jobs=auto
 
 try-import %workspace%/user.bazelrc

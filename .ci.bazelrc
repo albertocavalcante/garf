@@ -1,0 +1,16 @@
+common:ci --announce_rc
+
+# BuildBuddy
+build:ci --build_metadata=ROLE=CI
+build:ci --build_metadata=VISIBILITY=PUBLIC
+
+# Resource constraints for GitHub Actions runners (public repos)
+# Linux (x64): 4-core, 16GB RAM
+# Windows: 4-core, 16GB RAM
+# Linux (arm64): 4-core, 16GB RAM
+# macOS (Intel): 4-core, 14GB RAM
+# macOS (M1/arm64): 3-core, 7GB RAM
+# https://docs.github.com/en/actions/using-github-hosted-runners/using-github-hosted-runners/about-github-hosted-runners#standard-github-hosted-runners-for-public-repositories
+build:ci --local_resources=cpu=HOST_CPUS
+build:ci --local_resources=memory=HOST_RAM
+build:ci --worker_max_instances=HOST_CPUS
