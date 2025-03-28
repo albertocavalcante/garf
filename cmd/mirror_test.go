@@ -21,17 +21,20 @@ import (
 
 // configTestCase defines a test case for ValidateAndGetConfig testing.
 type configTestCase struct {
-	name        string
-	source      string
-	destination string
-	envVars     map[string]string
-	shouldErr   bool
+	name          string
+	source        string
+	destination   string
+	jfrogURL      string
+	jfrogUser     string
+	jfrogPassword string
+	envVars       map[string]string
+	shouldErr     bool
 }
 
 // validateConfigTestCases contains all test cases for ValidateAndGetConfig.
 var validateConfigTestCases = []configTestCase{
 	{
-		name:        "Valid config with all required params",
+		name:        "Valid config with all required params via env vars",
 		source:      "https://github.com/example/repo/releases/download/v1.0/file.zip",
 		destination: "repo-local",
 		envVars: map[string]string{
@@ -40,6 +43,16 @@ var validateConfigTestCases = []configTestCase{
 			"JFROG_PASSWORD": "password",
 		},
 		shouldErr: false,
+	},
+	{
+		name:          "Valid config with all required params via flags",
+		source:        "https://github.com/example/repo/releases/download/v1.0/file.zip",
+		destination:   "repo-local",
+		jfrogURL:      "https://example.jfrog.io/artifactory",
+		jfrogUser:     "user",
+		jfrogPassword: "password",
+		envVars:       map[string]string{},
+		shouldErr:     false,
 	},
 	{
 		name:        "Missing source",
@@ -93,6 +106,20 @@ var validateConfigTestCases = []configTestCase{
 		},
 		shouldErr: true,
 	},
+	{
+		name:          "Flag overrides env var",
+		source:        "https://github.com/example/repo/releases/download/v1.0/file.zip",
+		destination:   "repo-local",
+		jfrogURL:      "https://flag.example.com/artifactory",
+		jfrogUser:     "flag-user",
+		jfrogPassword: "flag-password",
+		envVars: map[string]string{
+			"JFROG_URL":      "https://env.example.com/artifactory",
+			"JFROG_USER":     "env-user",
+			"JFROG_PASSWORD": "env-password",
+		},
+		shouldErr: false,
+	},
 }
 
 // TestValidateAndGetConfig tests the ValidateAndGetConfig function with various
@@ -124,17 +151,35 @@ func runValidateConfigTest(t *testing.T, tc configTestCase) {
 	}
 
 	// Run the function
-	config, err := cmd.ValidateAndGetConfig(tc.source, tc.destination)
+	config, err := cmd.ValidateAndGetConfig(tc.source, tc.destination, tc.jfrogURL, tc.jfrogUser, tc.jfrogPassword)
 
 	// Verify results
 	if tc.shouldErr {
 		require.Error(t, err, "Expected error for invalid input")
 		require.Nil(t, config, "Config should be nil when error occurs")
+
+		return
+	}
+
+	require.NoError(t, err, "No error expected for valid input")
+	require.NotNil(t, config, "Config should not be nil")
+
+	// Check if flag values take precedence
+	if tc.jfrogURL != "" {
+		require.Equal(t, tc.jfrogURL, config.URL)
 	} else {
-		require.NoError(t, err, "No error expected for valid input")
-		require.NotNil(t, config, "Config should not be nil")
 		require.Equal(t, tc.envVars["JFROG_URL"], config.URL)
+	}
+
+	if tc.jfrogUser != "" {
+		require.Equal(t, tc.jfrogUser, config.User)
+	} else {
 		require.Equal(t, tc.envVars["JFROG_USER"], config.User)
+	}
+
+	if tc.jfrogPassword != "" {
+		require.Equal(t, tc.jfrogPassword, config.Password)
+	} else {
 		require.Equal(t, tc.envVars["JFROG_PASSWORD"], config.Password)
 	}
 }
@@ -372,68 +417,18 @@ func setupMockMirrorForTest(t *testing.T) *mirror.DefaultMirror {
 	return testMirror
 }
 
-func runTestCase(t *testing.T, tc testCase, configPath string) {
-	t.Helper()
-
-	// Setup test mirror
-	testMirror := setupMockMirrorForTest(t)
-
-	// Create command
-	mirrorCmd := cmd.NewMirrorCmd()
-	flags := &cmd.MirrorFlags{
-		TestMirror: testMirror,
-	}
-
-	// Directly set flags instead of relying on command line parsing
-	if tc.useConfig {
-		flags.ConfigFile = configPath
-	}
-
-	if tc.source != "" {
-		flags.Source = tc.source
-	}
-
-	if tc.destination != "" {
-		flags.Destination = tc.destination
-	}
-
-	// Set command arguments
-	args := []string{}
-	if tc.useConfig {
-		args = append(args, "--config", configPath)
-	}
-
-	if tc.source != "" {
-		args = append(args, "--source", tc.source)
-	}
-
-	if tc.destination != "" {
-		args = append(args, "--destination", tc.destination)
-	}
-
-	mirrorCmd.SetArgs(args)
-	mirrorCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return flags.RunE(cmd, args)
-	}
-
-	// Run command
-	err := mirrorCmd.Execute()
-
-	if tc.wantErr {
-		require.Error(t, err)
-		require.Contains(t, err.Error(), tc.errMsg)
-	} else {
-		require.NoError(t, err)
-	}
-}
-
 type testCase struct {
-	name        string
-	useConfig   bool
-	source      string
-	destination string
-	wantErr     bool
-	errMsg      string
+	name                   string
+	useConfig              bool
+	source                 string
+	destination            string
+	jfrogURL               string
+	jfrogUser              string
+	jfrogPassword          string
+	jfrogPasswordFromStdin bool
+	stdinInput             string
+	wantErr                bool
+	errMsg                 string
 }
 
 func TestMirrorCmdRequiredFlags(t *testing.T) {
@@ -457,6 +452,25 @@ func TestMirrorCmdRequiredFlags(t *testing.T) {
 			destination: "http://localhost:8081/artifactory/generic-local/artifact.tar.gz",
 			wantErr:     false,
 		},
+		{
+			name:          "with JFrog credentials as flags",
+			source:        "https://github.com/owner/repo/releases/download/v1.0.0/artifact.tar.gz",
+			destination:   "repo-local",
+			jfrogURL:      "http://localhost:8081/artifactory",
+			jfrogUser:     "flag-user",
+			jfrogPassword: "flag-password",
+			wantErr:       false,
+		},
+		{
+			name:                   "with JFrog password from stdin",
+			source:                 "https://github.com/owner/repo/releases/download/v1.0.0/artifact.tar.gz",
+			destination:            "repo-local",
+			jfrogURL:               "http://localhost:8081/artifactory",
+			jfrogUser:              "stdin-user",
+			jfrogPasswordFromStdin: true,
+			stdinInput:             "stdin-password",
+			wantErr:                false,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -464,6 +478,153 @@ func TestMirrorCmdRequiredFlags(t *testing.T) {
 			runTestCase(t, tc, configPath)
 		})
 	}
+}
+
+// setupTestCommand creates and configures a test command with the given test case.
+func setupTestCommand(t *testing.T, tc testCase, configPath string) (*cobra.Command, *cmd.MirrorFlags) {
+	t.Helper()
+
+	// Setup test mirror
+	testMirror := setupMockMirrorForTest(t)
+
+	// Create command
+	mirrorCmd := cmd.NewMirrorCmd()
+	flags := &cmd.MirrorFlags{
+		TestMirror: testMirror,
+	}
+
+	// Set flags directly
+	setDirectFlags(flags, tc, configPath)
+
+	// Set command arguments
+	args := buildCommandArgs(tc, configPath)
+	mirrorCmd.SetArgs(args)
+
+	// Set custom RunE function
+	mirrorCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return flags.RunE(cmd, args)
+	}
+
+	return mirrorCmd, flags
+}
+
+// setDirectFlags sets flags directly on the MirrorFlags struct.
+func setDirectFlags(flags *cmd.MirrorFlags, tc testCase, configPath string) {
+	if tc.useConfig {
+		flags.ConfigFile = configPath
+	}
+
+	if tc.source != "" {
+		flags.Source = tc.source
+	}
+
+	if tc.destination != "" {
+		flags.Destination = tc.destination
+	}
+
+	if tc.jfrogURL != "" {
+		flags.JFrogURL = tc.jfrogURL
+	}
+
+	if tc.jfrogUser != "" {
+		flags.JFrogUser = tc.jfrogUser
+	}
+
+	if tc.jfrogPassword != "" {
+		flags.JFrogPassword = tc.jfrogPassword
+	}
+
+	if tc.jfrogPasswordFromStdin {
+		flags.JFrogPasswordFromStdin = true
+	}
+}
+
+// buildCommandArgs builds the command-line arguments for the test case.
+func buildCommandArgs(tc testCase, configPath string) []string {
+	args := []string{}
+
+	if tc.useConfig {
+		args = append(args, "--config", configPath)
+	}
+
+	if tc.source != "" {
+		args = append(args, "--source", tc.source)
+	}
+
+	if tc.destination != "" {
+		args = append(args, "--destination", tc.destination)
+	}
+
+	if tc.jfrogURL != "" {
+		args = append(args, "--jfrog-url", tc.jfrogURL)
+	}
+
+	if tc.jfrogUser != "" {
+		args = append(args, "--jfrog-user", tc.jfrogUser)
+	}
+
+	if tc.jfrogPassword != "" {
+		args = append(args, "--jfrog-password", tc.jfrogPassword)
+	}
+
+	if tc.jfrogPasswordFromStdin {
+		args = append(args, "--jfrog-password-stdin")
+	}
+
+	return args
+}
+
+// simulateStdinInput simulates input from stdin for testing.
+func simulateStdinInput(t *testing.T, input string) (*os.File, *os.File, func()) {
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+
+	oldStdin := os.Stdin
+	os.Stdin = r
+
+	_, err = w.WriteString(input + "\n")
+	require.NoError(t, err)
+
+	cleanup := func() {
+		w.Close()
+
+		os.Stdin = oldStdin
+	}
+
+	return r, w, cleanup
+}
+
+// validateCommandResult validates the result of command execution.
+func validateCommandResult(t *testing.T, err error, tc testCase) {
+	t.Helper()
+
+	if tc.wantErr {
+		require.Error(t, err)
+		require.Contains(t, err.Error(), tc.errMsg)
+
+		return
+	}
+
+	require.NoError(t, err)
+}
+
+func runTestCase(t *testing.T, tc testCase, configPath string) {
+	t.Helper()
+
+	// Setup stdin if needed
+	if tc.jfrogPasswordFromStdin {
+		_, _, cleanup := simulateStdinInput(t, tc.stdinInput)
+		defer cleanup()
+	}
+
+	// Setup test command
+	mirrorCmd, _ := setupTestCommand(t, tc, configPath)
+
+	// Run command
+	err := mirrorCmd.Execute()
+
+	// Validate results
+	validateCommandResult(t, err, tc)
 }
 
 func setupMockMirror(t *testing.T) *mirror.DefaultMirror {
@@ -505,6 +666,9 @@ func TestMirrorCmdFlagRegistration(t *testing.T) {
 		"unzip",
 		"dry-run",
 		"dry-run-mode",
+		"jfrog-url",
+		"jfrog-user",
+		"jfrog-password",
 	}
 
 	for _, flagName := range expectedFlags {

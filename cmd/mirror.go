@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -26,16 +27,20 @@ const (
 
 // MirrorFlags represents the flags for the mirror command.
 type MirrorFlags struct {
-	ConfigFile  string
-	Source      string
-	Destination string
-	FromFile    string
-	Raw         bool
-	Properties  []string
-	Unzip       bool
-	DryRun      bool
-	DryRunMode  string
-	TestMirror  *mirror.DefaultMirror // Used for testing only
+	ConfigFile             string
+	Source                 string
+	Destination            string
+	FromFile               string
+	Raw                    bool
+	Properties             []string
+	Unzip                  bool
+	DryRun                 bool
+	DryRunMode             string
+	JFrogURL               string
+	JFrogUser              string
+	JFrogPassword          string
+	JFrogPasswordFromStdin bool
+	TestMirror             *mirror.DefaultMirror // Used for testing only
 }
 
 func (f *MirrorFlags) addFlags(cmd *cobra.Command) {
@@ -73,6 +78,30 @@ func (f *MirrorFlags) addFlags(cmd *cobra.Command) {
 		"all",
 		"Dry run mode: 'all' (skip all operations), 'upload' (skip only upload to Artifactory)",
 	)
+	flags.StringVar(
+		&f.JFrogURL,
+		"jfrog-url",
+		"",
+		"JFrog Artifactory URL (can also be set via JFROG_URL env var)",
+	)
+	flags.StringVar(
+		&f.JFrogUser,
+		"jfrog-user",
+		"",
+		"JFrog Artifactory username (can also be set via JFROG_USER env var)",
+	)
+	flags.StringVar(
+		&f.JFrogPassword,
+		"jfrog-password",
+		"",
+		"JFrog Artifactory password (can also be set via JFROG_PASSWORD env var)",
+	)
+	flags.BoolVar(
+		&f.JFrogPasswordFromStdin,
+		"jfrog-password-stdin",
+		false,
+		"Read JFrog Artifactory password from stdin (more secure than --jfrog-password)",
+	)
 }
 
 // ParseProperties converts the properties array into a map.
@@ -92,30 +121,52 @@ func ParseProperties(props []string) map[string]string {
 }
 
 // ValidateAndGetConfig validates required flags and environment variables and returns a JFrog config.
-func ValidateAndGetConfig(source, destination string) (*destinations.JFrogConfig, error) {
+// Password priority: command-line flag > environment variable
+// The password can also be provided via stdin using the --jfrog-password-stdin flag.
+func ValidateAndGetConfig(
+	source, destination, jfrogURL, jfrogUser, jfrogPassword string,
+) (*destinations.JFrogConfig, error) {
 	if source == "" || destination == "" {
 		return nil, fmt.Errorf("required flag(s) \"destination\", \"source\" not set")
 	}
 
-	jfrogUrl, ok := os.LookupEnv("JFROG_URL")
-	if !ok {
-		return nil, fmt.Errorf("JFROG_URL environment variable is required")
+	// Priority: command-line flags > environment variables
+	url := jfrogURL
+	if url == "" {
+		var ok bool
+
+		url, ok = os.LookupEnv("JFROG_URL")
+		if !ok {
+			return nil, fmt.Errorf("JFrog URL is required via --jfrog-url flag or JFROG_URL environment variable")
+		}
 	}
 
-	jfrogUser, ok := os.LookupEnv("JFROG_USER")
-	if !ok {
-		return nil, fmt.Errorf("JFROG_USER environment variable is required")
+	user := jfrogUser
+	if user == "" {
+		var ok bool
+
+		user, ok = os.LookupEnv("JFROG_USER")
+		if !ok {
+			return nil, fmt.Errorf("JFrog user is required via --jfrog-user flag or JFROG_USER environment variable")
+		}
 	}
 
-	jfrogPassword, ok := os.LookupEnv("JFROG_PASSWORD")
-	if !ok {
-		return nil, fmt.Errorf("JFROG_PASSWORD environment variable is required")
+	password := jfrogPassword
+	if password == "" {
+		var ok bool
+
+		password, ok = os.LookupEnv("JFROG_PASSWORD")
+		if !ok {
+			return nil, fmt.Errorf(
+				"JFrog password is required via --jfrog-password flag, --jfrog-password-stdin flag, or JFROG_PASSWORD env var",
+			)
+		}
 	}
 
 	return &destinations.JFrogConfig{
-		URL:      jfrogUrl,
-		User:     jfrogUser,
-		Password: jfrogPassword,
+		URL:      url,
+		User:     user,
+		Password: password,
 	}, nil
 }
 
@@ -391,6 +442,73 @@ func (f *MirrorFlags) prepareArtifact(ctx context.Context) (*core.Artifact, *cor
 	return artifact, opts
 }
 
+// readPasswordFromStdin reads a password from stdin.
+func readPasswordFromStdin() (string, error) {
+	scanner := bufio.NewScanner(os.Stdin)
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return "", fmt.Errorf("failed to read password from stdin: %w", err)
+		}
+
+		return "", fmt.Errorf("no password provided via stdin")
+	}
+
+	password := scanner.Text()
+	if strings.TrimSpace(password) == "" {
+		return "", fmt.Errorf("password cannot be empty")
+	}
+
+	return password, nil
+}
+
+// updateConfigFromFlags updates the configuration with values from command-line flags.
+func (f *MirrorFlags) updateConfigFromFlags(config *config.Config) error {
+	// If source and destination are provided via flags, use them instead of config
+	if f.Source != "" {
+		config.Source.URL = f.Source
+	}
+
+	if f.Destination != "" {
+		config.Destination.URL = f.Destination
+	}
+
+	// If JFrog credentials are provided via flags, use them
+	if f.JFrogURL != "" {
+		config.Destination.URL = f.JFrogURL
+	}
+
+	if f.JFrogUser != "" {
+		config.Destination.User = f.JFrogUser
+	}
+
+	// Handle password from stdin if requested
+	if f.JFrogPasswordFromStdin {
+		password, err := readPasswordFromStdin()
+		if err != nil {
+			return err
+		}
+
+		config.Destination.Password = password
+	} else if f.JFrogPassword != "" {
+		config.Destination.Password = f.JFrogPassword
+	}
+
+	return nil
+}
+
+// validateConfig validates the configuration based on whether a config file is provided.
+func (f *MirrorFlags) validateConfig(config *config.Config) error {
+	if f.ConfigFile != "" {
+		if err := config.Validate(); err != nil {
+			return fmt.Errorf("invalid config: %w", err)
+		}
+	} else if err := f.validateSourceAndDestination(config); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // RunE executes the mirror command.
 func (f *MirrorFlags) RunE(cmd *cobra.Command, args []string) error {
 	// Validate dry run mode first
@@ -404,21 +522,13 @@ func (f *MirrorFlags) RunE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get configuration: %w", err)
 	}
 
-	// If source and destination are provided via flags, use them instead of config
-	if f.Source != "" {
-		config.Source.URL = f.Source
+	// Update config from flags
+	if err := f.updateConfigFromFlags(config); err != nil {
+		return err
 	}
 
-	if f.Destination != "" {
-		config.Destination.URL = f.Destination
-	}
-
-	// If config file is provided, validate it
-	if f.ConfigFile != "" {
-		if err := config.Validate(); err != nil {
-			return fmt.Errorf("invalid config: %w", err)
-		}
-	} else if err := f.validateSourceAndDestination(config); err != nil {
+	// Validate configuration
+	if err := f.validateConfig(config); err != nil {
 		return err
 	}
 
