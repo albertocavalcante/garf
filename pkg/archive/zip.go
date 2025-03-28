@@ -29,6 +29,10 @@ type ZipError struct {
 
 // Error returns the error message for the zip operation.
 func (e *ZipError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("zip operation %s failed: %v", e.Op, e.Err)
+	}
+
 	return fmt.Sprintf("zip operation %s failed", e.Op)
 }
 
@@ -52,10 +56,7 @@ func IsZipFile(path string) bool {
 
 // validateExtractOptions validates the provided extraction options.
 func validateExtractOptions(options ExtractOptions) error {
-	if options.DestinationDir == "" {
-		return &ZipError{Op: "validate", Err: fmt.Errorf("destination directory cannot be empty")}
-	}
-
+	// DestinationDir is optional, so no validation needed
 	return nil
 }
 
@@ -72,18 +73,28 @@ func createDestinationDir(destDir string) error {
 func findSingleFileInZip(r *zip.Reader) (*zip.File, error) {
 	var singleFile *zip.File
 
-	for _, f := range r.File {
-		if !f.FileInfo().IsDir() {
-			if singleFile != nil {
-				return nil, &ZipError{Op: "find_file", Err: fmt.Errorf("archive contains multiple files")}
-			}
+	hasDirectory := false
 
-			singleFile = f
+	for _, f := range r.File {
+		if f.FileInfo().IsDir() {
+			hasDirectory = true
+
+			continue
 		}
+
+		if singleFile != nil {
+			return nil, &ZipError{Op: "extract", Err: fmt.Errorf("multiple files found")}
+		}
+
+		singleFile = f
 	}
 
 	if singleFile == nil {
-		return nil, &ZipError{Op: "find_file", Err: fmt.Errorf("no files found in archive")}
+		if hasDirectory {
+			return nil, &ZipError{Op: "extract", Err: fmt.Errorf("directory found")}
+		}
+
+		return nil, &ZipError{Op: "extract", Err: fmt.Errorf("no files found in archive")}
 	}
 
 	return singleFile, nil
