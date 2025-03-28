@@ -1,0 +1,19 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "core",
+    srcs = [
+        "interfaces.go",
+        "options.go",
+    ],
+    importpath = "github.com/albertocavalcante/garf/pkg/core",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "core_test",
+    size = "small",
+    srcs = ["core_test.go"],
+    embed = [":core"],
+    deps = ["@com_github_stretchr_testify//require"],
+)
