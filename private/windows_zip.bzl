@@ -1,88 +1,110 @@
 """Rules for packaging Windows binaries in ZIP format."""
 
-load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_filegroup", "pkg_files")
-load("@rules_pkg//pkg/private/zip:zip.bzl", "pkg_zip")
+load("@aspect_bazel_lib//lib:tar.bzl", "tar")
 
-def windows_bin_zip(name, binary_target, dev_version = "0.0.0", visibility = None):
-    """Creates a ZIP archive for a Windows binary using rules_pkg.
+# Constants for reuse
+_EXE_EXTENSION = ".exe"
+_ZIP_EXTENSION = ".zip"
+_DEFAULT_VERSION = "0.0.0"
+_DEFAULT_ARCHES = ["amd64", "arm64"]
 
-    This rule packages a Windows binary into a ZIP file suitable for distribution.
-    By default it uses the provided dev_version ("0.0.0") for development builds.
-    In release workflow, the file can be processed to replace this version with the actual release version.
+def _extract_arch(binary_target):  # type: (str) -> str
+    """Extracts architecture from binary target name.
+    
+    Args:
+        binary_target: String, the binary target name
+        
+    Returns:
+        String, the extracted architecture
+    """
+    parts = binary_target.split("-")
+    if len(parts) < 2:
+        fail("Binary target name must contain architecture: {}".format(binary_target))
+    return parts[-1]
+
+def windows_bin_zip(name, binary_target, dev_version = _DEFAULT_VERSION, visibility = None):  # type: (str, str, str, list[str] | None) -> str
+    """Creates a ZIP archive for a Windows binary.
+
+    This implementation uses bsdtar's ability to create ZIP files directly by
+    specifying the --format=zip flag.
 
     Args:
-        name: Name for the zip target
-        binary_target: The binary target to package
-        dev_version: Default version to use for development builds (defaults to "0.0.0")
-        visibility: Visibility specification for the generated targets
+        name: String, name for the zip target
+        binary_target: String, the binary target to package
+        dev_version: String, version to use for development builds (defaults to "0.0.0")
+        visibility: List of labels, visibility specification for the generated targets
+        
+    Returns:
+        String, the name of the created ZIP target
     """
-
     # Extract arch from target name (assuming format "garf-bin-windows-amd64" or similar)
-    arch = binary_target.split("-")[-1]
-
-    # Copy the binary to a predictable name for renaming
+    arch = _extract_arch(binary_target)
+    
+    # Create output filename
+    zip_output = name.replace("-zip", "") + _ZIP_EXTENSION
+    
+    # Create a properly named copy of the binary
+    versioned_binary = name + "_renamed"
+    versioned_binary_out = "garf-" + dev_version + "-windows-" + arch + _EXE_EXTENSION
+    
     native.genrule(
-        name = name + "_renamed_binary",
+        name = versioned_binary,
         srcs = [binary_target],
-        outs = [name + "_renamed.exe"],
+        outs = [versioned_binary_out],
         cmd = select({
             "@platforms//os:windows": "copy $(location %s) $@" % binary_target,
             "//conditions:default": "cp $(location %s) $@" % binary_target,
         }),
-        executable = False,
     )
-
-    # Create mapping for the renamed file
-    pkg_files(
-        name = name + "_files",
-        srcs = [":" + name + "_renamed_binary"],
-        attributes = pkg_attributes(
-            mode = "0755",  # Executable permission
-        ),
-        renames = {
-            name + "_renamed.exe": "garf-" + dev_version + "-windows-" + arch + ".exe",
-        },
-    )
-
-    # Group all files for the package
-    pkg_filegroup(
-        name = name + "_pkg_files",
-        srcs = [":" + name + "_files"],
-    )
-
-    # Create the final ZIP package - use a clean output name
-    pkg_zip(
+    
+    # Create the ZIP archive directly using aspect_bazel_lib's tar rule with --format=zip
+    tar(
         name = name,
-        srcs = [":" + name + "_pkg_files"],
-        out = name.replace("-zip", "") + ".zip",  # Remove "-zip" from the output filename
-        compression_type = "deflated",
-        compression_level = 9,
+        srcs = [":" + versioned_binary],
+        out = zip_output,
+        args = ["--format=zip"],
         visibility = visibility or ["//visibility:public"],
     )
+    
+    return name
 
-def windows_bin_zips(name, base_name = None, arches = None, dev_version = "0.0.0", visibility = None):
+def windows_bin_zips(name, base_name = None, arches = None, dev_version = _DEFAULT_VERSION, visibility = None):  # type: (str, str | None, list[str] | None, str, list[str] | None) -> None
     """Creates ZIP archives for Windows binaries across multiple architectures.
-
-    This is a convenience wrapper around windows_bin_zip that creates ZIP packages
+    
+    This is a convenience wrapper that creates ZIP packages
     for all specified Windows architectures with a single function call.
-
+    
     Args:
-        name: A unique name for this target (required by Bazel convention)
-        base_name: Base name for binaries (e.g., "garf-bin"). Defaults to name if not provided.
-        arches: List of architectures to create ZIPs for (defaults to ["amd64", "arm64"])
-        dev_version: Default version to use for development builds (defaults to "0.0.0")
-        visibility: Visibility specification for the generated targets
+        name: String, a unique name for this target (required by Bazel convention)
+        base_name: String, base name for binaries (e.g., "garf-bin"). Defaults to name.
+        arches: List of strings, architectures to create ZIPs for (defaults to ["amd64", "arm64"])
+        dev_version: String, version to use for development builds (defaults to "0.0.0")
+        visibility: List of labels, visibility specification for the generated targets
     """
     if base_name == None:
         base_name = name
-
+        
     if arches == None:
-        arches = ["amd64", "arm64"]
-
+        arches = _DEFAULT_ARCHES
+        
+    # Create a list of all individual zip targets
+    zip_targets = []
+    
     for arch in arches:
-        windows_bin_zip(
-            name = base_name + "-windows-" + arch + "-zip",
+        target_name = base_name + "-windows-" + arch + "-zip"
+        result_name = windows_bin_zip(
+            name = target_name,
             binary_target = ":" + base_name + "-windows-" + arch,
             dev_version = dev_version,
             visibility = visibility,
         )
+        zip_targets.append(":" + result_name)
+    
+    # Create an empty file to depend on all zip targets
+    native.genrule(
+        name = name,
+        srcs = zip_targets,
+        outs = [name + ".done"],
+        cmd = "touch $@",
+        visibility = visibility,
+    )
