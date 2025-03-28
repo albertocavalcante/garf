@@ -21,14 +21,16 @@ def windows_bin_zip(name, binary_target, dev_version = "0.0.0", visibility = Non
     arch = binary_target.split("-")[-1]
 
     # Copy the binary to a predictable name for renaming
+    # Use platform-specific commands to avoid dependency on bash on Windows
     native.genrule(
         name = name + "_renamed_binary",
         srcs = [binary_target],
         outs = [name + "_renamed.exe"],
-        cmd = select({
-            "@platforms//os:windows": "copy $(location %s) $@" % binary_target,
-            "//conditions:default": "cp $(location %s) $@" % binary_target,
-        }),
+        # Platform-specific commands to copy the binary
+        cmd = "cp $(location %s) $@" % binary_target,  # Default fallback
+        cmd_bash = "cp $(location %s) $@" % binary_target,  # Unix/Linux/macOS
+        cmd_bat = "copy $(location %s) $@" % binary_target,  # Windows cmd.exe
+        cmd_ps = "Copy-Item -Path $(location %s) -Destination $@" % binary_target,  # Windows PowerShell
         executable = False,
     )
 
