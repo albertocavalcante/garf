@@ -67,6 +67,8 @@ jobs:
           
           # Build all targets at once with progress output
           bazelisk build \
+            --config=ci \
+            --remote_header=x-buildbuddy-api-key=${{ secrets.BUILDBUDDY_API_KEY }} \
             --show_progress_rate_limit=5 \
             //:garf-bin-linux-amd64 \
             //:garf-bin-linux-arm64 \
