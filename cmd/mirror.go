@@ -33,6 +33,8 @@ type MirrorFlags struct {
 	Raw         bool
 	Properties  []string
 	Unzip       bool
+	DryRun      bool
+	DryRunMode  string
 }
 
 func (f *MirrorFlags) addFlags(cmd *cobra.Command) {
@@ -57,6 +59,18 @@ func (f *MirrorFlags) addFlags(cmd *cobra.Command) {
 		"unzip",
 		false,
 		"Unzip and upload content if source is a zip file with a single file inside",
+	)
+	flags.BoolVar(
+		&f.DryRun,
+		"dry-run",
+		false,
+		"Perform a dry run without making actual changes",
+	)
+	flags.StringVar(
+		&f.DryRunMode,
+		"dry-run-mode",
+		"all",
+		"Dry run mode: 'all' (skip all operations), 'upload' (skip only upload to Artifactory)",
 	)
 }
 
@@ -193,6 +207,8 @@ func createMirrorOptions(ctx context.Context, flags *MirrorFlags) *core.MirrorOp
 		PreserveStructure: !flags.Raw,
 		Context:           ctx,
 		Concurrent:        defaultConcurrent,
+		DryRun:            flags.DryRun,
+		DryRunMode:        flags.DryRunMode,
 	}
 }
 
@@ -238,14 +254,51 @@ func processMirrorResults(params MirrorResultsParams) error {
 	return lastErr
 }
 
+// ValidateDryRunMode validates the dry run mode.
+func (f *MirrorFlags) ValidateDryRunMode() error {
+	if !f.DryRun {
+		return nil
+	}
+
+	validModes := map[string]bool{
+		"all":    true,
+		"upload": true,
+	}
+
+	if !validModes[f.DryRunMode] {
+		return fmt.Errorf("invalid dry run mode: %s. Valid modes are: all, upload", f.DryRunMode)
+	}
+
+	return nil
+}
+
 // processAndUploadArtifact processes and uploads a single artifact.
 func processAndUploadArtifact(flags *MirrorFlags, jfrogConfig *destinations.JFrogConfig) error {
 	ctx := context.Background()
 
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.TextFormatter{
-		FullTimestamp: true,
+		FullTimestamp:          true,
+		DisableColors:          false,
+		DisableLevelTruncation: true,
+		PadLevelText:           true,
+		ForceColors:            true,
 	})
+
+	// Enable debug logging for URL parsing and other operations
+	logger.SetLevel(logrus.DebugLevel)
+
+	// Log parsed URLs and configuration
+	logger.WithFields(logrus.Fields{
+		"source":      flags.Source,
+		"destination": flags.Destination,
+		"from_file":   flags.FromFile,
+		"raw":         flags.Raw,
+		"properties":  flags.Properties,
+		"unzip":       flags.Unzip,
+		"dry_run":     flags.DryRun,
+		"dry_mode":    flags.DryRunMode,
+	}).Debug("Parsed command line arguments")
 
 	// Create mirror instance
 	mirror := createMirror(logger)
@@ -257,16 +310,36 @@ func processAndUploadArtifact(flags *MirrorFlags, jfrogConfig *destinations.JFro
 	}
 	defer source.Close()
 
-	// Create destination
-	if err := setupDestination(mirror, logger, jfrogConfig); err != nil {
-		return err
+	// Create destination only if not in dry run mode or if in upload-only dry run mode
+	if !flags.DryRun || flags.DryRunMode == "upload" {
+		if err := setupDestination(mirror, logger, jfrogConfig); err != nil {
+			return err
+		}
+	} else {
+		logger.Info("Dry run mode: skipping destination setup")
 	}
 
 	// Create artifact
 	artifact := createArtifact(flags)
+	logger.WithFields(logrus.Fields{
+		"name":     artifact.Name,
+		"location": artifact.Location,
+		"metadata": artifact.Metadata,
+	}).Debug("Created artifact")
 
-	// Create mirror options
+	// Create mirror options with progress tracking
 	opts := createMirrorOptions(ctx, flags)
+	opts.ProgressFunc = func(current, total int64, message string) {
+		if total > 0 {
+			percentage := float64(current) / float64(total) * 100
+			logger.WithFields(logrus.Fields{
+				"current":    current,
+				"total":      total,
+				"percentage": fmt.Sprintf("%.2f%%", percentage),
+				"message":    message,
+			}).Info("Progress update")
+		}
+	}
 
 	// Start mirroring
 	results := mirror.Mirror(ctx, []*core.Artifact{artifact}, opts)
@@ -303,7 +376,11 @@ Examples:
   garf mirror \
     --source https://github.com/example/repo/releases/download/v1.0.0/artifact.zip \
     --destination sandbox-generic-local \
-    --unzip`,
+    --unzip
+
+  # Dry run modes
+  garf mirror --source <url> --destination <repo> --dry-run  # Skip all operations
+  garf mirror --source <url> --destination <repo> --dry-run --dry-run-mode upload  # Skip only upload`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		flags := &MirrorFlags{}
 		flags.addFlags(cmd)
@@ -312,6 +389,11 @@ Examples:
 		config, err := getConfig()
 		if err != nil {
 			return fmt.Errorf("failed to get configuration: %w", err)
+		}
+
+		// Validate dry run mode
+		if err := flags.ValidateDryRunMode(); err != nil {
+			return err
 		}
 
 		// If no config file is provided, validate required flags
@@ -342,6 +424,20 @@ Examples:
 			logger.SetLevel(level)
 		}
 
+		// Configure colorful and structured logging
+		logger.SetFormatter(&logrus.TextFormatter{
+			FullTimestamp:          true,
+			DisableColors:          false,
+			DisableLevelTruncation: true,
+			PadLevelText:           true,
+			ForceColors:            true,
+		})
+
+		// Log dry run mode
+		if flags.DryRun {
+			logger.WithField("mode", flags.DryRunMode).Info("Running in dry run mode")
+		}
+
 		// Create mirror instance
 		mirror := mirror.NewDefaultMirror(logger)
 
@@ -354,13 +450,15 @@ Examples:
 			return fmt.Errorf("failed to add source: %w", err)
 		}
 
-		// Setup destination
-		dest, err := mirror.SetupDestination(logger, config)
-		if err != nil {
-			return fmt.Errorf("failed to setup destination: %w", err)
-		}
-		if err := mirror.AddDestination("default", dest); err != nil {
-			return fmt.Errorf("failed to add destination: %w", err)
+		// Setup destination only if not in dry run mode or if in upload-only dry run mode
+		if !flags.DryRun || flags.DryRunMode == "upload" {
+			dest, err := mirror.SetupDestination(logger, config)
+			if err != nil {
+				return fmt.Errorf("failed to setup destination: %w", err)
+			}
+			if err := mirror.AddDestination("default", dest); err != nil {
+				return fmt.Errorf("failed to add destination: %w", err)
+			}
 		}
 
 		// Create context with timeout

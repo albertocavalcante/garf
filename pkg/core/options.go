@@ -18,10 +18,16 @@ type MirrorOptions struct {
 	Concurrent int
 
 	// ProgressFunc is called to report progress during mirroring
-	ProgressFunc func(current, total int64)
+	ProgressFunc func(current, total int64, message string)
 
 	// Context allows for cancellation and timeouts
 	Context context.Context
+
+	// DryRun indicates if this is a dry run operation
+	DryRun bool
+
+	// DryRunMode specifies the dry run mode: "all" or "upload"
+	DryRunMode string
 }
 
 // Validate validates the mirror options.
@@ -32,6 +38,17 @@ func (o *MirrorOptions) Validate() error {
 
 	if o.Concurrent <= 0 {
 		return fmt.Errorf("concurrent must be greater than 0")
+	}
+
+	if o.DryRun {
+		validModes := map[string]bool{
+			"all":    true,
+			"upload": true,
+		}
+
+		if !validModes[o.DryRunMode] {
+			return fmt.Errorf("invalid dry run mode: %s. Valid modes are: all, upload", o.DryRunMode)
+		}
 	}
 
 	return nil
