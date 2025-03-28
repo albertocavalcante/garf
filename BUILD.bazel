@@ -39,12 +39,12 @@ go_binary(
 cross_platform_go_binary(
     name = "garf-bin",
     embed = [":garf_lib"],
+    tags = ["manual"],
     x_defs = {
         "github.com/albertocavalcante/garf/cmd.BuildDate": "{BUILD_DATE}",
         "github.com/albertocavalcante/garf/cmd.CommitHash": "{STABLE_GIT_COMMIT}",
         "github.com/albertocavalcante/garf/cmd.Version": "{STABLE_VERSION}",
     },
-    tags = ["manual"],
 )
 
 # Create ZIP packages for all Windows architectures with a single call

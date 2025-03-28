@@ -23,7 +23,7 @@ def _extract_arch(binary_target):
         fail("Binary target name must contain architecture: {}".format(binary_target))
     return parts[-1]
 
-def windows_bin_zip(name, binary_target, dev_version = _DEFAULT_VERSION, visibility = None, tags = None): 
+def windows_bin_zip(name, binary_target, dev_version = _DEFAULT_VERSION, visibility = None, tags = None):
     # type: (string, string, string, list[string] | None, list[string] | None) -> string
     """Creates a ZIP archive for a Windows binary.
 
