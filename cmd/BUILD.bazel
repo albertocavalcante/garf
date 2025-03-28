@@ -18,7 +18,7 @@ go_library(
 
 go_test(
     name = "cmd_test",
-    timeout = "short",
+    size = "small",
     srcs = [
         "mirror_test.go",
         "version_test.go",
