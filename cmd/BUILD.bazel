@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "mirror.go",
         "root.go",
+        "version.go",
     ],
     importpath = "github.com/albertocavalcante/garf/cmd",
     visibility = ["//visibility:public"],
@@ -17,9 +18,12 @@ go_library(
 
 go_test(
     name = "cmd_test",
-    srcs = ["mirror_test.go"],
+    srcs = [
+        "mirror_test.go",
+        "version_test.go",
+    ],
+    embed = [":cmd"],
     deps = [
-        ":cmd",
         "//artifact",
         "@com_github_stretchr_testify//require",
     ],
