@@ -1,0 +1,3 @@
+# Toolchain Debugging
+# https://bazel.build/extending/toolchains#debugging-toolchains
+build:debug --toolchain_resolution_debug=".*"

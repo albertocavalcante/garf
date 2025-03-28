@@ -33,9 +33,19 @@ jobs:
           java-version: "21"
 
       - name: Build
+        shell: bash
         run: |
-          bazelisk build //...
+          bazelisk build \
+            --config=ci \
+            --config=remote-cache \
+            --remote_header=x-buildbuddy-api-key=${{ secrets.BUILDBUDDY_API_KEY }} \
+            //...
 
       - name: Test
+        shell: bash
         run: |
-          bazelisk test //...
+          bazelisk test \
+            --config=ci \
+            --config=remote-cache \
+            --remote_header=x-buildbuddy-api-key=${{ secrets.BUILDBUDDY_API_KEY }} \
+            //...
