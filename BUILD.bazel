@@ -44,6 +44,7 @@ cross_platform_go_binary(
         "github.com/albertocavalcante/garf/cmd.CommitHash": "{STABLE_GIT_COMMIT}",
         "github.com/albertocavalcante/garf/cmd.Version": "{STABLE_VERSION}",
     },
+    tags = ["manual"],
 )
 
 # Create ZIP packages for all Windows architectures with a single call
