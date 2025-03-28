@@ -5,6 +5,7 @@ alwaysApply: true
 ---
 # Go
 
+- When resolving a linter error, always execute the correspondign unit tests before proceeding to the next linter fix.
 - NEVER change manually `go.mod` and `go.sum`, unless explicitly authorized or instructed.
 - AVOID using the local `go` installation on the host machine. PREFER to use `rules_go` Go SDK. Example:
 
