@@ -10,8 +10,13 @@ go_library(
     importpath = "github.com/albertocavalcante/garf/cmd",
     visibility = ["//visibility:public"],
     deps = [
-        "//artifact",
-        "//core",
+        "//pkg/archive",
+        "//pkg/config",
+        "//pkg/core",
+        "//pkg/destinations",
+        "//pkg/mirror",
+        "//pkg/sources",
+        "@com_github_sirupsen_logrus//:logrus",
         "@com_github_spf13_cobra//:cobra",
     ],
 )
@@ -23,9 +28,8 @@ go_test(
         "mirror_test.go",
         "version_test.go",
     ],
-    embed = [":cmd"],
     deps = [
-        "//artifact",
+        ":cmd",
         "@com_github_stretchr_testify//require",
     ],
 )
