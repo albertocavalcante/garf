@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/albertocavalcante/garf/compare/v0.1.0...v0.1.1) (2025-03-28)
+
+
+### Features
+
+* add `version` command ([#66](https://github.com/albertocavalcante/garf/issues/66)) ([78dec1e](https://github.com/albertocavalcante/garf/commit/78dec1ee372c338f6b3617c3c960081d75c26fb6))
+
 ## 0.1.0 (2025-03-27)
 
 
