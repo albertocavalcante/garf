@@ -12,6 +12,7 @@ go_library(
 
 go_test(
     name = "artifact_test",
+    size = "small",
     srcs = ["parser_test.go"],
     deps = [
         ":artifact",
