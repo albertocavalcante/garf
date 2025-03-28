@@ -24,10 +24,12 @@ func NewVersionCmd() *cobra.Command {
 				- Version number
 				- Git commit hash
 				- Build date`,
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("garf version %s\n", Version)
-			fmt.Printf("commit: %s\n", CommitHash)
-			fmt.Printf("build date: %s\n", BuildDate)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "garf version %s\n", Version)
+			fmt.Fprintf(out, "commit: %s\n", CommitHash)
+			fmt.Fprintf(out, "build date: %s\n", BuildDate)
+			return nil
 		},
 	}
 
