@@ -1,6 +1,7 @@
 # Command Line Reference
 # https://bazel.build/reference/command-line-reference
 import %workspace%/tools/rc/correctness.bazelrc
+import %workspace%/tools/rc/performance.bazelrc
 
 common --enable_platform_specific_config
 
