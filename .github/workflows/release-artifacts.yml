@@ -65,9 +65,12 @@ jobs:
           echo "::group::Building executables and ZIP packages"
           echo -e "\e[1;34m==>\e[0m \e[1mBuilding cross-platform executables and packages...\e[0m"
           
-          # Build all targets at once with progress output
+          # Build all targets at once with progress output and version stamping
           bazelisk build \
             --config=ci \
+            --config=remote-cache \
+            --stamp \
+            --workspace_status_command=./tools/status.sh \
             --remote_header=x-buildbuddy-api-key=${{ secrets.BUILDBUDDY_API_KEY }} \
             --show_progress_rate_limit=5 \
             //:garf-bin-linux-amd64 \

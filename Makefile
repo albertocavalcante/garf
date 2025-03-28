@@ -8,6 +8,10 @@ build:
 	bazelisk build //:garf
 .PHONY: build
 
+test:
+	bazelisk test //...
+.PHONY: test
+
 fmt:
 	bazelisk run @rules_go//go -- fmt ./...
 .PHONY: fmt

@@ -29,11 +29,21 @@ go_binary(
     name = "garf",
     embed = [":garf_lib"],
     visibility = ["//visibility:public"],
+    x_defs = {
+        "github.com/albertocavalcante/garf/cmd.BuildDate": "{BUILD_DATE}",
+        "github.com/albertocavalcante/garf/cmd.CommitHash": "{STABLE_GIT_COMMIT}",
+        "github.com/albertocavalcante/garf/cmd.Version": "{STABLE_VERSION}",
+    },
 )
 
 cross_platform_go_binary(
     name = "garf-bin",
     embed = [":garf_lib"],
+    x_defs = {
+        "github.com/albertocavalcante/garf/cmd.BuildDate": "{BUILD_DATE}",
+        "github.com/albertocavalcante/garf/cmd.CommitHash": "{STABLE_GIT_COMMIT}",
+        "github.com/albertocavalcante/garf/cmd.Version": "{STABLE_VERSION}",
+    },
 )
 
 # Create ZIP packages for all Windows architectures with a single call

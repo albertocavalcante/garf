@@ -2,7 +2,7 @@
 
 load("@rules_go//go:def.bzl", "go_binary")
 
-def cross_platform_go_binary(name, embed, visibility = None):
+def cross_platform_go_binary(name, embed, visibility = None, x_defs = None):
     """Creates Go binaries for multiple platforms simultaneously.
 
     This macro creates separate go_binary targets for each platform and architecture
@@ -13,11 +13,14 @@ def cross_platform_go_binary(name, embed, visibility = None):
         embed: Library target(s) to embed in the binary.
         visibility: Visibility specification for the generated targets.
             Defaults to public visibility if None.
+        x_defs: Map of string to string for version stamping.
+            Keys are variable names to substitute, values are the strings to use.
 
     Example:
         cross_platform_go_binary(
             name = "myapp",
             embed = [":myapp_lib"],
+            x_defs = {"Version": "1.0.0"},
         )
     """
     for os in ("linux", "darwin", "windows"):
@@ -37,4 +40,5 @@ def cross_platform_go_binary(name, embed, visibility = None):
                 goos = os,
                 pure = "on",
                 visibility = visibility or ["//visibility:public"],
+                x_defs = x_defs,
             )
