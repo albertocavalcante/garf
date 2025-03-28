@@ -34,8 +34,14 @@ jobs:
 
       - name: Build
         run: |
-          bazelisk build //...
+          bazelisk \
+            --config=ci \
+            --remote_header=x-buildbuddy-api-key=${{ secrets.BUILDBUDDY_API_KEY }} \
+            build //...
 
       - name: Test
         run: |
-          bazelisk test //...
+          bazelisk \
+            --config=ci \
+            --remote_header=x-buildbuddy-api-key=${{ secrets.BUILDBUDDY_API_KEY }} \
+            test //...
