@@ -1,9 +1,11 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 # Bazel
 
+- Bazel Dependency Management: Use `Bzlmod` only. DO NOT use `WORKSPACE`.
+- Avoid editting `BUILD` files, run `make gazelle` and only edit if Gazelle didn't suffice.
 - Avoid cleaning the cache as much as possible.
 - Use `bazel clean --expunge` as last resort.

@@ -5,5 +5,5 @@ alwaysApply: true
 ---
 # Global Rules
 
-- Bazel Dependency Management: Use `Bzlmod` only. DO NOT use `WORKSPACE`.
-- Avoid editting `BUILD` files, run `make gazelle` and only edit if Gazelle didn't suffice.
+- Every package at `pkg` must contain a `README.md` with a clear documentation.
+
