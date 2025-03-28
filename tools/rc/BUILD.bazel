@@ -6,6 +6,7 @@ write_aspect_bazelrc_presets(
     name = "update_bazelrc_presets",
     presets = [
         "correctness",
+        "performance",
     ],
     tags = ["manual"],
 )
