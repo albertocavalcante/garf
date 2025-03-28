@@ -10,13 +10,21 @@ on:
         required: true
         type: string
 
+# Prevent concurrent release builds and cancel outdated ones
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
 jobs:
-  upload-binaries:
-    name: Build and Upload Binaries
+  build-binaries:
+    name: Build Release Binaries
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      artifacts_count: ${{ steps.prepare_artifacts.outputs.artifacts_count }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -31,64 +39,188 @@ jobs:
       - name: Extract version from tag
         id: get_version
         run: |
-          # Use the input tag if provided or the release tag
+          # Enable command tracing for debugging
+          set -x
+          
           TAG_REF="${{ github.event.inputs.tag || github.ref_name }}"
           VERSION=${TAG_REF#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "Using version: $VERSION from tag: $TAG_REF"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+          # Use ANSI colors for important notices
+          echo -e "\e[1;34m==>\e[0m \e[1mBuilding release artifacts for version: \e[1;32m$VERSION\e[0m (from tag: \e[1;33m$TAG_REF\e[0m)"
+          echo "::notice::Building release artifacts for version: $VERSION (from tag: $TAG_REF)"
 
-      - name: List available targets
-        run: |
-          # Check which targets are actually available
-          echo "Available bazel targets:"
-          bazelisk query 'kind("go_binary", //...)'
-          echo "---------------------------------------"
-
-      - name: Build and prepare binaries
+      - name: Build all platform artifacts
         id: build
         run: |
-          # Build all platform binaries in one command
-          bazelisk build //:garf-bin-linux-amd64 //:garf-bin-linux-arm64 //:garf-bin-darwin-amd64 //:garf-bin-darwin-arm64 //:garf-bin-windows-amd64 //:garf-bin-windows-arm64 //:windows-zips
-
-          # Create release directory
+          # Enable command tracing for build commands
+          set -x
+          
+          # Record start time for build metrics
+          BUILD_START=$(date +%s)
+          
+          BAZEL_BIN=$(bazelisk info bazel-bin)
           mkdir -p release-binaries
-
-          # Find the actual binary locations by querying bazel
-          echo "Locating binaries..."
-          echo "Using bazel-bin location: $(bazelisk info bazel-bin)"
-
-          # Direct copy approach - these paths match the Bazel output pattern
-          # from the cross_platform_go_binary macro defined in private/go_binary.bzl
-          cp -v $(bazelisk info bazel-bin)/garf-bin_linux_amd64 release-binaries/garf-${VERSION}-linux-amd64
-          cp -v $(bazelisk info bazel-bin)/garf-bin_linux_arm64 release-binaries/garf-${VERSION}-linux-arm64
-          cp -v $(bazelisk info bazel-bin)/garf-bin_darwin_amd64 release-binaries/garf-${VERSION}-darwin-amd64
-          cp -v $(bazelisk info bazel-bin)/garf-bin_darwin_arm64 release-binaries/garf-${VERSION}-darwin-arm64
-          cp -v $(bazelisk info bazel-bin)/garf-bin_windows_amd64.exe release-binaries/garf-${VERSION}-windows-amd64.exe
-          cp -v $(bazelisk info bazel-bin)/garf-bin_windows_arm64.exe release-binaries/garf-${VERSION}-windows-arm64.exe
-
-          # Copy the ZIP files to release directory with proper version in the filename
-          for arch in "amd64" "arm64"; do
-            cp -v "$(bazelisk info bazel-bin)/garf-bin-windows-$arch.zip" "release-binaries/garf-${VERSION}-windows-$arch.zip"
-          done
-
-          # Count and show found binaries
-          found_binaries=$(find release-binaries -type f | wc -l)
-          echo "Found $found_binaries binaries for release:"
-          ls -la release-binaries/
-
-          if [ "$found_binaries" -eq 0 ]; then
-            echo "::warning::No binaries found to upload"
-            exit 1
+          
+          echo "::group::Building executables and ZIP packages"
+          echo -e "\e[1;34m==>\e[0m \e[1mBuilding cross-platform executables and packages...\e[0m"
+          
+          # Build all targets at once with progress output
+          bazelisk build \
+            --show_progress_rate_limit=5 \
+            //:garf-bin-linux-amd64 \
+            //:garf-bin-linux-arm64 \
+            //:garf-bin-darwin-amd64 \
+            //:garf-bin-darwin-arm64 \
+            //:garf-bin-windows-amd64 \
+            //:garf-bin-windows-arm64 \
+            //:windows-zips
+          
+          # Store build status
+          BUILD_STATUS=$?
+          echo "::endgroup::"
+            
+          # Calculate and display build duration with colored output based on status
+          BUILD_END=$(date +%s)
+          BUILD_DURATION=$((BUILD_END - BUILD_START))
+          
+          if [ $BUILD_STATUS -eq 0 ]; then
+            echo -e "\e[1;32m✓\e[0m \e[1mBuild completed successfully\e[0m in ${BUILD_DURATION}s"
+            echo "::notice::Build completed in ${BUILD_DURATION}s - All executables and ZIP packages successfully built"
+          else
+            echo -e "\e[1;31m✗\e[0m \e[1mBuild failed\e[0m after ${BUILD_DURATION}s"
+            echo "::error::Build failed after ${BUILD_DURATION}s"
+            exit $BUILD_STATUS
           fi
 
-      - name: Upload binaries to release
-        if: steps.build.outcome == 'success'
+      - name: Prepare release artifacts
+        id: prepare_artifacts
+        run: |
+          # Enable command tracing for artifact preparation
+          set -x
+          
+          BAZEL_BIN=$(bazelisk info bazel-bin)
+          ARTIFACTS_START=$(date +%s)
+          
+          echo "::group::Preparing Linux and macOS binaries"
+          echo -e "\e[1;34m==>\e[0m \e[1mPreparing Linux and macOS binaries\e[0m"
+          # Copy Linux and macOS binaries with versioned names
+          for platform in linux darwin; do
+            for arch in amd64 arm64; do
+              echo -e "  \e[1;36m-\e[0m Processing $platform/$arch binary"
+              cp -v "${BAZEL_BIN}/garf-bin_${platform}_${arch}" "release-binaries/garf-${VERSION}-${platform}-${arch}"
+              chmod +x "release-binaries/garf-${VERSION}-${platform}-${arch}"
+            done
+          done
+          echo "::endgroup::"
+          
+          echo "::group::Preparing Windows binaries and packages"
+          echo -e "\e[1;34m==>\e[0m \e[1mPreparing Windows binaries and packages\e[0m"
+          # Copy Windows executables and ZIP files
+          for arch in amd64 arm64; do
+            echo -e "  \e[1;36m-\e[0m Processing windows/$arch binary and ZIP"
+            cp -v "${BAZEL_BIN}/garf-bin_windows_${arch}.exe" "release-binaries/garf-${VERSION}-windows-${arch}.exe"
+            
+            # Copy the ZIP files (already versioned by our improved implementation)
+            cp -v "${BAZEL_BIN}/garf-bin-windows-${arch}.zip" "release-binaries/garf-${VERSION}-windows-${arch}.zip"
+          done
+          echo "::endgroup::"
+          
+          # Generate SHA256 checksums for all artifacts
+          echo "::group::Generating checksums"
+          echo -e "\e[1;34m==>\e[0m \e[1mGenerating SHA256 checksums\e[0m"
+          cd release-binaries
+          sha256sum * > SHA256SUMS
+          echo -e "\e[1;33mSHA256 checksums:\e[0m"
+          cat SHA256SUMS
+          cd ..
+          echo "::endgroup::"
+          
+          # Verify and list artifacts
+          echo "::group::Release artifacts summary"
+          echo -e "\e[1;34m==>\e[0m \e[1mRelease artifacts summary\e[0m"
+          ls -la release-binaries/
+          
+          # Count binaries to ensure we have what we expect
+          found_binaries=$(find release-binaries -type f -not -name "SHA256SUMS" | wc -l)
+          echo "artifacts_count=$found_binaries" >> $GITHUB_OUTPUT
+          echo -e "Found \e[1;36m$found_binaries\e[0m artifacts for release"
+          
+          if [ "$found_binaries" -lt 8 ]; then
+            echo -e "\e[1;31m✗ ERROR:\e[0m Expected at least 8 artifacts (6 executables + 2 zip files) but found only $found_binaries"
+            echo "::error::Expected at least 8 artifacts (6 executables + 2 zip files) but found only $found_binaries"
+            exit 1
+          else
+            echo -e "\e[1;32m✓\e[0m Artifacts validation successful"
+          fi
+          echo "::endgroup::"
+          
+          # Calculate and display duration
+          ARTIFACTS_END=$(date +%s)
+          ARTIFACTS_DURATION=$((ARTIFACTS_END - ARTIFACTS_START))
+          echo -e "\e[1;32m✓\e[0m \e[1mRelease artifacts prepared\e[0m in ${ARTIFACTS_DURATION}s"
+          echo "::notice::Release artifacts prepared successfully with SHA256 checksums in ${ARTIFACTS_DURATION}s"
+          
+          # Create a summary markdown file
+          echo "## Release Artifacts Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Platform | Architecture | Binary | ZIP |" >> $GITHUB_STEP_SUMMARY
+          echo "| --- | --- | --- | --- |" >> $GITHUB_STEP_SUMMARY
+          echo "| Linux | amd64 | ✅ | - |" >> $GITHUB_STEP_SUMMARY
+          echo "| Linux | arm64 | ✅ | - |" >> $GITHUB_STEP_SUMMARY
+          echo "| macOS | amd64 | ✅ | - |" >> $GITHUB_STEP_SUMMARY
+          echo "| macOS | arm64 | ✅ | - |" >> $GITHUB_STEP_SUMMARY
+          echo "| Windows | amd64 | ✅ | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Windows | arm64 | ✅ | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**SHA256 checksums generated:** ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Total artifacts:** $found_binaries" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload artifacts to release
+        id: upload
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Enable command tracing for upload commands
+          set -x
+          
+          # Record start time for upload metrics
+          UPLOAD_START=$(date +%s)
+          
           # Target tag for upload
           TARGET_TAG="${{ github.event.inputs.tag || github.ref_name }}"
-
-          # Upload all binaries at once
-          echo "Uploading binaries to release $TARGET_TAG"
+          
+          echo "::group::Uploading release artifacts"
+          echo -e "\e[1;34m==>\e[0m \e[1mUploading artifacts to release \e[1;33m$TARGET_TAG\e[0m"
+          
+          # Upload all binaries at once with progress indication
           gh release upload "$TARGET_TAG" release-binaries/* --clobber
+          UPLOAD_STATUS=$?
+          echo "::endgroup::"
+          
+          # Calculate and display upload duration
+          UPLOAD_END=$(date +%s)
+          UPLOAD_DURATION=$((UPLOAD_END - UPLOAD_START))
+          
+          if [ $UPLOAD_STATUS -eq 0 ]; then
+            echo -e "\e[1;32m✓\e[0m \e[1mArtifacts uploaded successfully\e[0m in ${UPLOAD_DURATION}s"
+            echo "::notice::Successfully uploaded all artifacts to release $TARGET_TAG in ${UPLOAD_DURATION}s"
+            
+            # Add release URL to the output for easy access
+            REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+            RELEASE_URL="${REPO_URL}/releases/tag/${TARGET_TAG}"
+            echo -e "\e[1;34m==>\e[0m View release at: \e[4;36m${RELEASE_URL}\e[0m"
+            
+            # Add to job summary
+            echo "## Release Uploaded Successfully ✅" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Release tag:** $TARGET_TAG" >> $GITHUB_STEP_SUMMARY
+            echo "**Upload duration:** ${UPLOAD_DURATION}s" >> $GITHUB_STEP_SUMMARY
+            echo "**View release:** [${RELEASE_URL}](${RELEASE_URL})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo -e "\e[1;31m✗\e[0m \e[1mArtifact upload failed\e[0m after ${UPLOAD_DURATION}s"
+            echo "::error::Failed to upload artifacts to release $TARGET_TAG after ${UPLOAD_DURATION}s"
+            exit $UPLOAD_STATUS
+          fi
