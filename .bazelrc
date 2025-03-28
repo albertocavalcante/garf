@@ -9,9 +9,6 @@ common --enable_platform_specific_config
 # Experimental Flags
 common --experimental_isolated_extension_usages
 
-# Incompatible Flags
-common --incompatible_use_plus_in_repo_names
-
 # Hermetic C++ Toolchain
 build --action_env BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 
