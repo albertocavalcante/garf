@@ -1,0 +1,23 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "sources",
+    srcs = ["github.go"],
+    importpath = "github.com/albertocavalcante/garf/pkg/sources",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/core",
+        "@com_github_sirupsen_logrus//:logrus",
+    ],
+)
+
+go_test(
+    name = "sources_test",
+    size = "small",
+    srcs = ["github_test.go"],
+    embed = [":sources"],
+    deps = [
+        "//pkg/core",
+        "@com_github_stretchr_testify//require",
+    ],
+)
