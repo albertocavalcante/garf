@@ -51,6 +51,7 @@ cross_platform_go_binary(
 windows_bin_zips(
     name = "windows-zips",
     base_name = "garf-bin",
+    tags = ["manual"],
     # Uncomment to override the default architectures
     # arches = ["amd64", "arm64"],
     # Uncomment to override the development version

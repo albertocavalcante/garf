@@ -8,7 +8,8 @@ _ZIP_EXTENSION = ".zip"
 _DEFAULT_VERSION = "0.0.0"
 _DEFAULT_ARCHES = ["amd64", "arm64"]
 
-def _extract_arch(binary_target):  # type: (str) -> str
+def _extract_arch(binary_target):
+    # type: (string) -> string
     """Extracts architecture from binary target name.
 
     Args:
@@ -22,7 +23,8 @@ def _extract_arch(binary_target):  # type: (str) -> str
         fail("Binary target name must contain architecture: {}".format(binary_target))
     return parts[-1]
 
-def windows_bin_zip(name, binary_target, dev_version = _DEFAULT_VERSION, visibility = None):  # type: (str, str, str, list[str] | None) -> str
+def windows_bin_zip(name, binary_target, dev_version = _DEFAULT_VERSION, visibility = None, tags = None): 
+    # type: (string, string, string, list[string] | None, list[string] | None) -> string
     """Creates a ZIP archive for a Windows binary.
 
     This implementation uses bsdtar's ability to create ZIP files directly by
@@ -33,6 +35,7 @@ def windows_bin_zip(name, binary_target, dev_version = _DEFAULT_VERSION, visibil
         binary_target: String, the binary target to package
         dev_version: String, version to use for development builds (defaults to "0.0.0")
         visibility: List of labels, visibility specification for the generated targets
+        tags: List of strings, tags to apply to the generated targets
 
     Returns:
         String, the name of the created ZIP target
@@ -65,11 +68,13 @@ def windows_bin_zip(name, binary_target, dev_version = _DEFAULT_VERSION, visibil
         out = zip_output,
         args = ["--format=zip"],
         visibility = visibility or ["//visibility:public"],
+        tags = tags,
     )
 
     return name
 
-def windows_bin_zips(name, base_name = None, arches = None, dev_version = _DEFAULT_VERSION, visibility = None):  # type: (str, str | None, list[str] | None, str, list[str] | None) -> None
+def windows_bin_zips(name, base_name = None, arches = None, dev_version = _DEFAULT_VERSION, visibility = None, tags = None):
+    # type: (string, string | None, list[string] | None, string, list[string] | None, list[string] | None) -> None
     """Creates ZIP archives for Windows binaries across multiple architectures.
 
     This is a convenience wrapper that creates ZIP packages
@@ -81,6 +86,7 @@ def windows_bin_zips(name, base_name = None, arches = None, dev_version = _DEFAU
         arches: List of strings, architectures to create ZIPs for (defaults to ["amd64", "arm64"])
         dev_version: String, version to use for development builds (defaults to "0.0.0")
         visibility: List of labels, visibility specification for the generated targets
+        tags: List of strings, tags to apply to the generated targets
     """
     if base_name == None:
         base_name = name
@@ -98,6 +104,7 @@ def windows_bin_zips(name, base_name = None, arches = None, dev_version = _DEFAU
             binary_target = ":" + base_name + "-windows-" + arch,
             dev_version = dev_version,
             visibility = visibility,
+            tags = tags,
         )
         zip_targets.append(":" + result_name)
 
@@ -108,4 +115,5 @@ def windows_bin_zips(name, base_name = None, arches = None, dev_version = _DEFAU
         outs = [name + ".done"],
         cmd = "touch $@",
         visibility = visibility,
+        tags = tags,
     )
