@@ -8,7 +8,6 @@ build --bes_backend=grpcs://remote.buildbuddy.io
 build --bes_results_url=https://app.buildbuddy.io/invocation/
 build --remote_cache=grpcs://remote.buildbuddy.io
 build --remote_timeout=3600
-build --noremote_upload_local_results # Uploads logs & artifacts without writing to cache
 
 # Cache compression settings
 build --remote_cache_compression
