@@ -2,8 +2,11 @@ package core
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
+	"github.com/albertocavalcante/garf/pkg/core"
+	"github.com/albertocavalcante/garf/pkg/progress"
 	"github.com/jfrog/jfrog-client-go/artifactory"
 	"github.com/jfrog/jfrog-client-go/artifactory/auth"
 	"github.com/jfrog/jfrog-client-go/artifactory/services"
@@ -52,17 +55,21 @@ func NewJFrogClient(jc *JFrogConfig) (*JFrogClient, error) {
 }
 
 // UploadGenericArtifact uploads a generic artifact to Artifactory.
-func (c *JFrogClient) UploadGenericArtifact(file, targetPath string, properties []string) error {
-	opts := artifactory.UploadServiceOptions{
-		FailFast: true,
-	}
-
+func (c *JFrogClient) UploadGenericArtifact(artifact *core.Artifact, content io.Reader, progressFunc progress.ProgressFunc) error {
+	// Create upload parameters
 	params := services.NewUploadParams()
-	params.Pattern = file
-	params.Target = targetPath
+	params.Pattern = artifact.Location
+	params.Target = artifact.Location
 
-	if len(properties) > 0 {
-		targetProps, err := CreateTargetProperties(properties)
+	// Set properties if any
+	if len(artifact.Metadata) > 0 {
+		// Convert metadata map to slice of strings
+		var props []string
+		for k, v := range artifact.Metadata {
+			props = append(props, fmt.Sprintf("%s=%s", k, v))
+		}
+
+		targetProps, err := CreateTargetProperties(props)
 		if err != nil {
 			return err
 		}
@@ -70,13 +77,42 @@ func (c *JFrogClient) UploadGenericArtifact(file, targetPath string, properties 
 		params.SetTargetProps(targetProps)
 	}
 
-	totalUploaded, totalFailed, err := c.UploadFiles(opts, params)
+	// If we have a progress function, wrap the reader
+	if progressFunc != nil {
+		// Get the total size if available
+		var total int64
+
+		if seeker, ok := content.(io.Seeker); ok {
+			// Save current position
+			pos, err := seeker.Seek(0, io.SeekCurrent)
+			if err == nil {
+				// Seek to end to get size
+				total, err = seeker.Seek(0, io.SeekEnd)
+				if err == nil {
+					// Restore position
+					_, _ = seeker.Seek(pos, io.SeekStart)
+				}
+			}
+		}
+
+		// Create progress reader
+		reader := progress.NewReader(content, total, progressFunc)
+		content = reader
+	}
+
+	// Upload the artifact
+	opts := artifactory.UploadServiceOptions{
+		FailFast: true,
+	}
+
+	_, totalFailed, err := c.UploadFiles(opts, params)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Total uploaded: %d\n", totalUploaded)
-	fmt.Printf("Total failed: %d\n", totalFailed)
+	if totalFailed > 0 {
+		return fmt.Errorf("failed to upload %d files", totalFailed)
+	}
 
 	return nil
 }
