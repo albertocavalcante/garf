@@ -10,7 +10,6 @@ on:
         required: true
         type: string
 
-# Prevent concurrent release builds and cancel outdated ones
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.inputs.tag || github.ref }}
   cancel-in-progress: true
