@@ -13,7 +13,6 @@ import (
 	"github.com/albertocavalcante/garf/pkg/core"
 	"github.com/albertocavalcante/garf/pkg/destinations"
 	"github.com/albertocavalcante/garf/pkg/mirror"
-	"github.com/albertocavalcante/garf/pkg/sources"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -22,6 +21,7 @@ const (
 	propertyKeyValueParts = 2
 	defaultTimeout        = 30 * time.Minute
 	defaultConcurrent     = 4
+	percentageMultiplier  = 100
 )
 
 // MirrorFlags represents the flags for the mirror command.
@@ -35,6 +35,7 @@ type MirrorFlags struct {
 	Unzip       bool
 	DryRun      bool
 	DryRunMode  string
+	TestMirror  *mirror.DefaultMirror // Used for testing only
 }
 
 func (f *MirrorFlags) addFlags(cmd *cobra.Command) {
@@ -93,7 +94,7 @@ func ParseProperties(props []string) map[string]string {
 // ValidateAndGetConfig validates required flags and environment variables and returns a JFrog config.
 func ValidateAndGetConfig(source, destination string) (*destinations.JFrogConfig, error) {
 	if source == "" || destination == "" {
-		return nil, fmt.Errorf("--source and --destination flags are required")
+		return nil, fmt.Errorf("required flag(s) \"destination\", \"source\" not set")
 	}
 
 	jfrogUrl, ok := os.LookupEnv("JFROG_URL")
@@ -166,20 +167,28 @@ func createMirror(logger *logrus.Logger) *mirror.DefaultMirror {
 	return mirror.NewDefaultMirror(logger)
 }
 
-// setupSource creates and adds a GitHub source to the mirror.
-func setupSource(mirror *mirror.DefaultMirror, logger *logrus.Logger) (*sources.GitHubSource, error) {
-	source := sources.NewGitHubSource(logger)
-	if err := mirror.AddSource("github", source); err != nil {
-		return nil, fmt.Errorf("failed to add source: %w", err)
+// setupSource configures and adds a source to the mirror.
+func (f *MirrorFlags) setupSource(m *mirror.DefaultMirror, logger *logrus.Logger, config *config.Config) error {
+	source, err := m.SetupSource(logger, config)
+	if err != nil {
+		return fmt.Errorf("failed to setup source: %w", err)
 	}
 
-	return source, nil
+	if err := m.AddSource("default", source); err != nil {
+		return fmt.Errorf("failed to add source: %w", err)
+	}
+
+	return nil
 }
 
-// setupDestination creates and adds a JFrog destination to the mirror.
-func setupDestination(mirror *mirror.DefaultMirror, logger *logrus.Logger, config *destinations.JFrogConfig) error {
-	dest := destinations.NewJFrogDestination(*config, logger)
-	if err := mirror.AddDestination("jfrog", dest); err != nil {
+// setupDestination configures and adds a destination to the mirror.
+func (f *MirrorFlags) setupDestination(m *mirror.DefaultMirror, logger *logrus.Logger, config *config.Config) error {
+	dest, err := m.SetupDestination(logger, config)
+	if err != nil {
+		return fmt.Errorf("failed to setup destination: %w", err)
+	}
+
+	if err := m.AddDestination("default", dest); err != nil {
 		return fmt.Errorf("failed to add destination: %w", err)
 	}
 
@@ -272,11 +281,54 @@ func (f *MirrorFlags) ValidateDryRunMode() error {
 	return nil
 }
 
-// processAndUploadArtifact processes and uploads a single artifact.
-func processAndUploadArtifact(flags *MirrorFlags, jfrogConfig *destinations.JFrogConfig) error {
-	ctx := context.Background()
+// getConfig reads and validates the configuration file.
+func (f *MirrorFlags) getConfig() (*config.Config, error) {
+	if f.ConfigFile != "" {
+		// Read config from file
+		cfg, err := config.Load(f.ConfigFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load config file: %w", err)
+		}
 
+		// Validate config
+		if err := cfg.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid config: %w", err)
+		}
+
+		return cfg, nil
+	}
+
+	// Return default config
+	return &config.Config{
+		Source: config.SourceConfig{
+			Type: "github",
+			URL:  f.Source,
+		},
+		Destination: config.DestinationConfig{
+			Type:     "jfrog",
+			URL:      f.Destination,
+			User:     "",
+			Password: "",
+		},
+		LogLevel:   "info",
+		Concurrent: defaultConcurrent,
+	}, nil
+}
+
+// setupLogger creates and configures a logger instance.
+func (f *MirrorFlags) setupLogger(config *config.Config) (*logrus.Logger, error) {
 	logger := logrus.New()
+
+	if config.LogLevel != "" {
+		level, err := logrus.ParseLevel(config.LogLevel)
+		if err != nil {
+			return nil, fmt.Errorf("invalid log level: %w", err)
+		}
+
+		logger.SetLevel(level)
+	}
+
+	// Configure colorful and structured logging
 	logger.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp:          true,
 		DisableColors:          false,
@@ -285,71 +337,120 @@ func processAndUploadArtifact(flags *MirrorFlags, jfrogConfig *destinations.JFro
 		ForceColors:            true,
 	})
 
-	// Enable debug logging for URL parsing and other operations
-	logger.SetLevel(logrus.DebugLevel)
+	// Log dry run mode
+	if f.DryRun {
+		logger.WithField("mode", f.DryRunMode).Info("Running in dry run mode")
+	}
 
-	// Log parsed URLs and configuration
-	logger.WithFields(logrus.Fields{
-		"source":      flags.Source,
-		"destination": flags.Destination,
-		"from_file":   flags.FromFile,
-		"raw":         flags.Raw,
-		"properties":  flags.Properties,
-		"unzip":       flags.Unzip,
-		"dry_run":     flags.DryRun,
-		"dry_mode":    flags.DryRunMode,
-	}).Debug("Parsed command line arguments")
+	return logger, nil
+}
 
-	// Create mirror instance
-	mirror := createMirror(logger)
+// setupTestMirror creates a new mirror instance with source and destination.
+func (f *MirrorFlags) setupTestMirror(logger *logrus.Logger, config *config.Config) (*mirror.DefaultMirror, error) {
+	m := mirror.NewDefaultMirror(logger)
 
-	// Create source
-	source, err := setupSource(mirror, logger)
+	// Setup source
+	if err := f.setupSource(m, logger, config); err != nil {
+		return nil, err
+	}
+
+	// Setup destination only if not in dry run mode or if in upload-only dry run mode
+	if !f.DryRun || f.DryRunMode == "upload" {
+		if err := f.setupDestination(m, logger, config); err != nil {
+			return nil, err
+		}
+	}
+
+	return m, nil
+}
+
+// setupMirror creates and configures a mirror instance.
+func (f *MirrorFlags) setupMirror(logger *logrus.Logger, config *config.Config) (*mirror.DefaultMirror, error) {
+	// Create or use test mirror
+	if f.TestMirror != nil {
+		return f.TestMirror, nil
+	}
+
+	return f.setupTestMirror(logger, config)
+}
+
+// validateSourceAndDestination validates if source and destination are set when not using a config file.
+func (f *MirrorFlags) validateSourceAndDestination(config *config.Config) error {
+	if f.ConfigFile == "" && (config.Source.URL == "" || config.Destination.URL == "") {
+		return fmt.Errorf("required flag(s) \"destination\", \"source\" not set")
+	}
+
+	return nil
+}
+
+// prepareArtifact creates an artifact from config source URL and prepares mirror options.
+func (f *MirrorFlags) prepareArtifact(ctx context.Context) (*core.Artifact, *core.MirrorOptions) {
+	artifact := createArtifact(f)
+	opts := createMirrorOptions(ctx, f)
+
+	return artifact, opts
+}
+
+// RunE executes the mirror command.
+func (f *MirrorFlags) RunE(cmd *cobra.Command, args []string) error {
+	// Validate dry run mode first
+	if err := f.ValidateDryRunMode(); err != nil {
+		return err
+	}
+
+	// Get configuration
+	config, err := f.getConfig()
+	if err != nil {
+		return fmt.Errorf("failed to get configuration: %w", err)
+	}
+
+	// If source and destination are provided via flags, use them instead of config
+	if f.Source != "" {
+		config.Source.URL = f.Source
+	}
+
+	if f.Destination != "" {
+		config.Destination.URL = f.Destination
+	}
+
+	// If config file is provided, validate it
+	if f.ConfigFile != "" {
+		if err := config.Validate(); err != nil {
+			return fmt.Errorf("invalid config: %w", err)
+		}
+	} else if err := f.validateSourceAndDestination(config); err != nil {
+		return err
+	}
+
+	// Setup logger
+	logger, err := f.setupLogger(config)
 	if err != nil {
 		return err
 	}
-	defer source.Close()
 
-	// Create destination only if not in dry run mode or if in upload-only dry run mode
-	if !flags.DryRun || flags.DryRunMode == "upload" {
-		if err := setupDestination(mirror, logger, jfrogConfig); err != nil {
-			return err
-		}
-	} else {
-		logger.Info("Dry run mode: skipping destination setup")
+	// Setup mirror
+	m, err := f.setupMirror(logger, config)
+	if err != nil {
+		return err
 	}
 
-	// Create artifact
-	artifact := createArtifact(flags)
-	logger.WithFields(logrus.Fields{
-		"name":     artifact.Name,
-		"location": artifact.Location,
-		"metadata": artifact.Metadata,
-	}).Debug("Created artifact")
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
 
-	// Create mirror options with progress tracking
-	opts := createMirrorOptions(ctx, flags)
-	opts.ProgressFunc = func(current, total int64, message string) {
-		if total > 0 {
-			percentage := float64(current) / float64(total) * 100
-			logger.WithFields(logrus.Fields{
-				"current":    current,
-				"total":      total,
-				"percentage": fmt.Sprintf("%.2f%%", percentage),
-				"message":    message,
-			}).Info("Progress update")
-		}
-	}
+	// Create artifact from config source URL
+	f.Source = config.Source.URL // Set the source URL from config
+	artifact, opts := f.prepareArtifact(ctx)
 
-	// Start mirroring
-	results := mirror.Mirror(ctx, []*core.Artifact{artifact}, opts)
+	// Start mirroring process
+	results := m.Mirror(ctx, []*core.Artifact{artifact}, opts)
 
 	// Process results
 	params := MirrorResultsParams{
 		results:  results,
 		logger:   logger,
-		flags:    flags,
-		mirror:   mirror,
+		flags:    f,
+		mirror:   m,
 		artifact: artifact,
 		opts:     opts,
 	}
@@ -357,11 +458,13 @@ func processAndUploadArtifact(flags *MirrorFlags, jfrogConfig *destinations.JFro
 	return processMirrorResults(params)
 }
 
-// mirrorCmd represents the mirror command.
-var mirrorCmd = &cobra.Command{
-	Use:   "mirror",
-	Short: "Mirror artifacts from a source to a destination",
-	Long: `Mirror artifacts from a source to a destination.
+// NewMirrorCmd creates a new mirror command.
+func NewMirrorCmd() *cobra.Command {
+	flags := &MirrorFlags{}
+	cmd := &cobra.Command{
+		Use:   "mirror",
+		Short: "Mirror artifacts from a source to a destination",
+		Long: `Mirror artifacts from a source to a destination.
 
 This command will:
 1. Download artifacts from the configured source
@@ -381,138 +484,12 @@ Examples:
   # Dry run modes
   garf mirror --source <url> --destination <repo> --dry-run  # Skip all operations
   garf mirror --source <url> --destination <repo> --dry-run --dry-run-mode upload  # Skip only upload`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		flags := &MirrorFlags{}
-		flags.addFlags(cmd)
-
-		// Get configuration
-		config, err := getConfig()
-		if err != nil {
-			return fmt.Errorf("failed to get configuration: %w", err)
-		}
-
-		// Validate dry run mode
-		if err := flags.ValidateDryRunMode(); err != nil {
-			return err
-		}
-
-		// If no config file is provided, validate required flags
-		if flags.ConfigFile == "" {
-			if flags.Source == "" {
-				return fmt.Errorf("--source flag is required when not using --config")
-			}
-			if flags.Destination == "" {
-				return fmt.Errorf("--destination flag is required when not using --config")
-			}
-		}
-
-		// If source and destination are provided via flags, use them instead of config
-		if flags.Source != "" {
-			config.Source.URL = flags.Source
-		}
-		if flags.Destination != "" {
-			config.Destination.URL = flags.Destination
-		}
-
-		// Setup logger
-		logger := logrus.New()
-		if config.LogLevel != "" {
-			level, err := logrus.ParseLevel(config.LogLevel)
-			if err != nil {
-				return fmt.Errorf("invalid log level: %w", err)
-			}
-			logger.SetLevel(level)
-		}
-
-		// Configure colorful and structured logging
-		logger.SetFormatter(&logrus.TextFormatter{
-			FullTimestamp:          true,
-			DisableColors:          false,
-			DisableLevelTruncation: true,
-			PadLevelText:           true,
-			ForceColors:            true,
-		})
-
-		// Log dry run mode
-		if flags.DryRun {
-			logger.WithField("mode", flags.DryRunMode).Info("Running in dry run mode")
-		}
-
-		// Create mirror instance
-		mirror := mirror.NewDefaultMirror(logger)
-
-		// Setup source
-		source, err := mirror.SetupSource(logger, config)
-		if err != nil {
-			return fmt.Errorf("failed to setup source: %w", err)
-		}
-		if err := mirror.AddSource("default", source); err != nil {
-			return fmt.Errorf("failed to add source: %w", err)
-		}
-
-		// Setup destination only if not in dry run mode or if in upload-only dry run mode
-		if !flags.DryRun || flags.DryRunMode == "upload" {
-			dest, err := mirror.SetupDestination(logger, config)
-			if err != nil {
-				return fmt.Errorf("failed to setup destination: %w", err)
-			}
-			if err := mirror.AddDestination("default", dest); err != nil {
-				return fmt.Errorf("failed to add destination: %w", err)
-			}
-		}
-
-		// Create context with timeout
-		ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
-		defer cancel()
-
-		// Create artifact from flags
-		artifact := createArtifact(flags)
-
-		// Create mirror options
-		opts := createMirrorOptions(ctx, flags)
-
-		// Start mirroring process
-		results := mirror.Mirror(ctx, []*core.Artifact{artifact}, opts)
-
-		// Process results
-		params := MirrorResultsParams{
-			results:  results,
-			logger:   logger,
-			flags:    flags,
-			mirror:   mirror,
-			artifact: artifact,
-			opts:     opts,
-		}
-
-		return processMirrorResults(params)
-	},
-}
-
-// NewMirrorCmd creates a new mirror command.
-func NewMirrorCmd() *cobra.Command {
-	flags := &MirrorFlags{}
-	mirrorCmd.Flags().StringVarP(&flags.ConfigFile, "config", "c", "", "Path to configuration file")
-	// Remove the required flag since we now support both config and direct flags
-	// mirrorCmd.MarkFlagRequired("config")
-
-	return mirrorCmd
-}
-
-// getConfig reads and validates the configuration file.
-func getConfig() (*config.Config, error) {
-	// Load configuration from file
-	return &config.Config{
-		Source: config.SourceConfig{
-			Type: "github",
-			URL:  "https://github.com/example/repo/releases/download/v1.0.0/artifact.zip",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return flags.RunE(cmd, args)
 		},
-		Destination: config.DestinationConfig{
-			Type:     "jfrog",
-			URL:      "https://artifactory.example.com/artifactory",
-			User:     os.Getenv("JFROG_USER"),
-			Password: os.Getenv("JFROG_PASSWORD"),
-		},
-		LogLevel:   "info",
-		Concurrent: defaultConcurrent,
-	}, nil
+	}
+	cmd.Flags().StringVarP(&flags.ConfigFile, "config", "c", "", "Path to configuration file")
+	flags.addFlags(cmd)
+
+	return cmd
 }

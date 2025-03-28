@@ -77,13 +77,60 @@ func (m *DefaultMirror) AddDestination(name string, destination core.Destination
 }
 
 // processArtifact processes a single artifact using the first available source and destination.
-func (m *DefaultMirror) processArtifact(ctx context.Context, artifact *core.Artifact, opts *core.MirrorOptions) MirrorResult {
-	// Get the first available source and destination
+func (m *DefaultMirror) processArtifact(
+	ctx context.Context,
+	artifact *core.Artifact,
+	opts *core.MirrorOptions,
+) MirrorResult {
+	result := MirrorResult{
+		Artifact: artifact,
+	}
+
+	if err := m.validateArtifact(artifact); err != nil {
+		result.Error = err
+
+		return result
+	}
+
+	if err := m.downloadAndUploadArtifact(ctx, artifact, opts, &result); err != nil {
+		result.Error = err
+
+		return result
+	}
+
+	return result
+}
+
+func (m *DefaultMirror) validateArtifact(artifact *core.Artifact) error {
+	if artifact == nil {
+		return fmt.Errorf("artifact is nil")
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if len(m.sources) == 0 {
+		return fmt.Errorf("no source available")
+	}
+
+	if len(m.destinations) == 0 {
+		return fmt.Errorf("no destination available")
+	}
+
+	return nil
+}
+
+func (m *DefaultMirror) downloadAndUploadArtifact(
+	ctx context.Context,
+	artifact *core.Artifact,
+	opts *core.MirrorOptions,
+	result *MirrorResult,
+) error {
+	m.mu.RLock()
 	var source core.Source
 
 	var destination core.Destination
 
-	m.mu.RLock()
 	for _, s := range m.sources {
 		source = s
 
@@ -97,65 +144,35 @@ func (m *DefaultMirror) processArtifact(ctx context.Context, artifact *core.Arti
 	}
 	m.mu.RUnlock()
 
-	if source == nil {
-		return MirrorResult{
-			Artifact: artifact,
-			Error:    fmt.Errorf("no source available"),
-		}
-	}
-
-	// Skip destination check if in dry run mode
-	if !opts.DryRun && destination == nil {
-		return MirrorResult{
-			Artifact: artifact,
-			Error:    fmt.Errorf("no destination available"),
-		}
-	}
-
-	// Download the artifact
 	content, err := source.Get(ctx, artifact)
 	if err != nil {
-		return MirrorResult{
-			Artifact: artifact,
-			Error:    fmt.Errorf("failed to get artifact: %w", err),
-		}
+		return fmt.Errorf("failed to get artifact: %w", err)
 	}
 	defer content.Close()
 
-	// If in dry run mode, skip upload
-	if opts.DryRun {
+	if opts != nil && opts.DryRun {
 		if opts.DryRunMode == "all" {
 			m.logger.WithFields(logrus.Fields{
 				"artifact": artifact.Name,
 				"mode":     opts.DryRunMode,
 			}).Info("Dry run: skipping upload")
 
-			return MirrorResult{
-				Artifact: artifact,
-			}
+			return nil
 		}
-		// For "upload" mode, we still want to process the artifact but skip the actual upload
+
 		m.logger.WithFields(logrus.Fields{
 			"artifact": artifact.Name,
 			"mode":     opts.DryRunMode,
 		}).Info("Dry run: simulating upload")
 
-		return MirrorResult{
-			Artifact: artifact,
-		}
+		return nil
 	}
 
-	// Upload the artifact
 	if err := destination.Put(ctx, artifact, content); err != nil {
-		return MirrorResult{
-			Artifact: artifact,
-			Error:    fmt.Errorf("failed to put artifact: %w", err),
-		}
+		return fmt.Errorf("failed to put artifact: %w", err)
 	}
 
-	return MirrorResult{
-		Artifact: artifact,
-	}
+	return nil
 }
 
 // Mirror copies artifacts from sources to destinations.

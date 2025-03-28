@@ -15,7 +15,6 @@ go_library(
         "//pkg/core",
         "//pkg/destinations",
         "//pkg/mirror",
-        "//pkg/sources",
         "@com_github_sirupsen_logrus//:logrus",
         "@com_github_spf13_cobra//:cobra",
     ],
@@ -30,6 +29,11 @@ go_test(
     ],
     deps = [
         ":cmd",
+        "//pkg/core",
+        "//pkg/mirror",
+        "//pkg/sources",
+        "@com_github_sirupsen_logrus//:logrus",
+        "@com_github_spf13_cobra//:cobra",
         "@com_github_stretchr_testify//require",
     ],
 )

@@ -1,10 +1,21 @@
 package cmd_test
 
 import (
+	"bytes"
+	"context"
+	"io"
+	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/albertocavalcante/garf/cmd"
+	"github.com/albertocavalcante/garf/pkg/core"
+	"github.com/albertocavalcante/garf/pkg/mirror"
+	"github.com/albertocavalcante/garf/pkg/sources"
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
 
@@ -274,4 +285,333 @@ func restoreEnvironment(env map[string]string) {
 			os.Setenv(key, value)
 		}
 	}
+}
+
+// mockHTTPClient is a mock HTTP client that returns predefined responses.
+type mockHTTPClient struct {
+	responses map[string]*http.Response
+}
+
+func newMockHTTPClient() *mockHTTPClient {
+	return &mockHTTPClient{
+		responses: make(map[string]*http.Response),
+	}
+}
+
+func (m *mockHTTPClient) RoundTrip(req *http.Request) (*http.Response, error) {
+	// For GitHub URLs, return a mock response
+	if strings.Contains(req.URL.String(), "github.com") {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader([]byte("mock content"))),
+		}, nil
+	}
+
+	// For other URLs, return a 404
+	return &http.Response{
+		StatusCode: http.StatusNotFound,
+		Body:       io.NopCloser(bytes.NewReader([]byte{})),
+	}, nil
+}
+
+// mockDestination is a mock destination that does nothing.
+type mockDestination struct {
+	logger *logrus.Logger
+}
+
+func newMockDestination(logger *logrus.Logger) *mockDestination {
+	return &mockDestination{logger: logger}
+}
+
+func (m *mockDestination) Upload(ctx context.Context, artifact *core.Artifact, reader io.Reader) error {
+	return nil
+}
+
+func (m *mockDestination) Validate() error {
+	return nil
+}
+
+func (m *mockDestination) Close() error {
+	return nil
+}
+
+func (m *mockDestination) Exists(ctx context.Context, artifact *core.Artifact) (bool, error) {
+	return false, nil
+}
+
+func (m *mockDestination) Put(ctx context.Context, artifact *core.Artifact, reader io.Reader) error {
+	return nil
+}
+
+// setupMockMirrorForTest creates and configures a mock mirror for testing.
+func setupMockMirrorForTest(t *testing.T) *mirror.DefaultMirror {
+	t.Helper()
+
+	logger := logrus.New()
+	logger.SetOutput(io.Discard) // Suppress log output during tests
+
+	// Setup a mock HTTP client to avoid real network calls
+	mockClient := &http.Client{
+		Transport: &mockHTTPClient{},
+	}
+
+	// Create a GitHub source with the mock client
+	source := sources.NewGitHubSource(logger)
+	source.SetClient(mockClient)
+
+	// Create a test mirror
+	testMirror := mirror.NewDefaultMirror(logger)
+
+	// Add the source and destination
+	err := testMirror.AddSource("default", source)
+	require.NoError(t, err)
+
+	err = testMirror.AddDestination("default", newMockDestination(logger))
+	require.NoError(t, err)
+
+	return testMirror
+}
+
+func runTestCase(t *testing.T, tc testCase, configPath string) {
+	t.Helper()
+
+	// Setup test mirror
+	testMirror := setupMockMirrorForTest(t)
+
+	// Create command
+	mirrorCmd := cmd.NewMirrorCmd()
+	flags := &cmd.MirrorFlags{
+		TestMirror: testMirror,
+	}
+
+	// Directly set flags instead of relying on command line parsing
+	if tc.useConfig {
+		flags.ConfigFile = configPath
+	}
+
+	if tc.source != "" {
+		flags.Source = tc.source
+	}
+
+	if tc.destination != "" {
+		flags.Destination = tc.destination
+	}
+
+	// Set command arguments
+	args := []string{}
+	if tc.useConfig {
+		args = append(args, "--config", configPath)
+	}
+
+	if tc.source != "" {
+		args = append(args, "--source", tc.source)
+	}
+
+	if tc.destination != "" {
+		args = append(args, "--destination", tc.destination)
+	}
+
+	mirrorCmd.SetArgs(args)
+	mirrorCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return flags.RunE(cmd, args)
+	}
+
+	// Run command
+	err := mirrorCmd.Execute()
+
+	if tc.wantErr {
+		require.Error(t, err)
+		require.Contains(t, err.Error(), tc.errMsg)
+	} else {
+		require.NoError(t, err)
+	}
+}
+
+type testCase struct {
+	name        string
+	useConfig   bool
+	source      string
+	destination string
+	wantErr     bool
+	errMsg      string
+}
+
+func TestMirrorCmdRequiredFlags(t *testing.T) {
+	configPath, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	testCases := []testCase{
+		{
+			name:    "missing required flags",
+			wantErr: true,
+			errMsg:  "required flag(s) \"destination\", \"source\" not set",
+		},
+		{
+			name:      "using config file",
+			useConfig: true,
+			wantErr:   false,
+		},
+		{
+			name:        "source and destination directly",
+			source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.tar.gz",
+			destination: "http://localhost:8081/artifactory/generic-local/artifact.tar.gz",
+			wantErr:     false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			runTestCase(t, tc, configPath)
+		})
+	}
+}
+
+func setupMockMirror(t *testing.T) *mirror.DefaultMirror {
+	logger := logrus.New()
+	logger.SetOutput(io.Discard) // Suppress log output in tests
+
+	// Create mock HTTP client
+	mockClient := newMockHTTPClient()
+
+	// Create and configure source
+	source := sources.NewGitHubSource(logger)
+	source.SetClient(&http.Client{Transport: mockClient})
+
+	// Create mirror
+	mirror := mirror.NewDefaultMirror(logger)
+
+	// Add source and destination
+	err := mirror.AddSource("default", source)
+	require.NoError(t, err)
+
+	err = mirror.AddDestination("jfrog", newMockDestination(logger))
+	require.NoError(t, err)
+
+	return mirror
+}
+
+func TestMirrorCmdFlagRegistration(t *testing.T) {
+	// Create a new mirror command
+	mirrorCmd := cmd.NewMirrorCmd()
+
+	// Test that all expected flags are registered
+	expectedFlags := []string{
+		"config",
+		"source",
+		"destination",
+		"from-file",
+		"raw",
+		"properties",
+		"unzip",
+		"dry-run",
+		"dry-run-mode",
+	}
+
+	for _, flagName := range expectedFlags {
+		flag := mirrorCmd.Flags().Lookup(flagName)
+		require.NotNil(t, flag, "Flag %s should be registered", flagName)
+	}
+
+	// Test that flags are not registered multiple times
+	// This will panic if flags are registered twice
+	require.NotPanics(t, func() {
+		cmd.NewMirrorCmd()
+	})
+}
+
+func TestMirrorFlagsValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		flags     *cmd.MirrorFlags
+		wantError bool
+	}{
+		{
+			name: "valid dry run mode all",
+			flags: &cmd.MirrorFlags{
+				DryRun:     true,
+				DryRunMode: "all",
+			},
+			wantError: false,
+		},
+		{
+			name: "valid dry run mode upload",
+			flags: &cmd.MirrorFlags{
+				DryRun:     true,
+				DryRunMode: "upload",
+			},
+			wantError: false,
+		},
+		{
+			name: "invalid dry run mode",
+			flags: &cmd.MirrorFlags{
+				DryRun:     true,
+				DryRunMode: "invalid",
+			},
+			wantError: true,
+		},
+		{
+			name: "no dry run - no validation needed",
+			flags: &cmd.MirrorFlags{
+				DryRun:     false,
+				DryRunMode: "invalid",
+			},
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.flags.ValidateDryRunMode()
+			if tt.wantError {
+				require.Error(t, err)
+
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
+
+// setupTestEnvironment sets up the test environment with config file and environment variables.
+func setupTestEnvironment(t *testing.T) (string, func()) {
+	t.Helper()
+
+	// Save original environment variables
+	origJfrogURL := os.Getenv("JFROG_URL")
+	origJfrogUser := os.Getenv("JFROG_USER")
+	origJfrogPass := os.Getenv("JFROG_PASSWORD")
+
+	// Set test environment variables
+	os.Setenv("JFROG_URL", "http://localhost:8081")
+	os.Setenv("JFROG_USER", "admin")
+	os.Setenv("JFROG_PASSWORD", "password")
+
+	// Create temporary directory
+	tmpDir := t.TempDir()
+
+	// Create config file
+	configPath := filepath.Join(tmpDir, "test.yaml")
+	configContent := []byte(`
+source:
+  type: github
+  url: https://github.com/owner/repo/releases/download/v1.0.0/artifact.tar.gz
+destination:
+  type: jfrog
+  url: http://localhost:8081/artifactory/generic-local/artifact.tar.gz
+  user: admin
+  password: password
+log_level: info
+concurrent: 4
+`)
+	err := os.WriteFile(configPath, configContent, 0o644)
+	require.NoError(t, err)
+
+	cleanup := func() {
+		os.Setenv("JFROG_URL", origJfrogURL)
+		os.Setenv("JFROG_USER", origJfrogUser)
+		os.Setenv("JFROG_PASSWORD", origJfrogPass)
+	}
+
+	return configPath, cleanup
 }
