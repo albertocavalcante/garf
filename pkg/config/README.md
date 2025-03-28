@@ -1,81 +1,108 @@
 # Config Package
 
-The `config` package provides configuration management for the Garf tool. It handles both file-based configuration and environment variables.
+This package provides configuration management functionality for the application.
 
-## Configuration Structure
+## Components
 
-The configuration is structured as follows:
+### Config
+
+The `Config` type represents the application's configuration:
 
 ```go
 type Config struct {
-    Source      SourceConfig      `yaml:"source"`
-    Destination DestinationConfig `yaml:"destination"`
-    LogLevel    string           `yaml:"log_level"`
-    Concurrent  int              `yaml:"concurrent"`
+    Sources      map[string]SourceConfig
+    Destinations map[string]DestinationConfig
 }
+```
 
+### SourceConfig
+
+The `SourceConfig` type defines configuration for artifact sources:
+
+```go
 type SourceConfig struct {
-    Type string `yaml:"type"`
-    URL  string `yaml:"url"`
+    Type string
+    URL  string
+    // Additional source-specific fields
 }
+```
 
+### DestinationConfig
+
+The `DestinationConfig` type defines configuration for artifact destinations:
+
+```go
 type DestinationConfig struct {
-    Type     string `yaml:"type"`
-    URL      string `yaml:"url"`
-    User     string `yaml:"user"`
-    Password string `yaml:"password"`
+    Type     string
+    URL      string
+    User     string
+    Password string
+    // Additional destination-specific fields
 }
 ```
 
 ## Usage
 
-### File-based Configuration
-
-Create a YAML configuration file (e.g., `config.yaml`):
-
-```yaml
-source:
-  type: github
-  url: https://github.com/example/repo/releases/download/v1.0.0/artifact.zip
-
-destination:
-  type: jfrog
-  url: https://artifactory.example.com/artifactory
-  user: ${JFROG_USER}
-  password: ${JFROG_PASSWORD}
-
-log_level: info
-concurrent: 4
-```
-
-### Environment Variables
-
-The following environment variables are supported:
-
-- `JFROG_URL`: The URL of the JFrog Artifactory instance
-- `JFROG_USER`: The username for JFrog Artifactory authentication
-- `JFROG_PASSWORD`: The password for JFrog Artifactory authentication
-
-## Features
-
-- YAML configuration file support
-- Environment variable interpolation
-- Default values for optional fields
-- Validation of required fields
-- Support for multiple source and destination types
-
-## Example
+### Loading Configuration
 
 ```go
-import "github.com/albertocavalcante/garf/pkg/config"
-
-// Load configuration from file
-cfg, err := config.Load("config.yaml")
+config, err := config.LoadConfig("config.yaml")
 if err != nil {
     log.Fatal(err)
 }
+```
 
-// Use configuration
-source := cfg.Source
-destination := cfg.Destination
-``` 
+### Configuration File Format
+
+Example YAML configuration:
+
+```yaml
+sources:
+  github:
+    type: github
+    url: https://github.com/owner/repo
+
+destinations:
+  jfrog:
+    type: jfrog
+    url: https://jfrog.example.com
+    user: username
+    password: password
+```
+
+### Validating Configuration
+
+```go
+if err := config.Validate(); err != nil {
+    log.Printf("Invalid configuration: %v", err)
+}
+```
+
+## Supported Source Types
+
+- `github`: GitHub releases source
+- (Add other source types as they are implemented)
+
+## Supported Destination Types
+
+- `jfrog`: JFrog Artifactory destination
+- (Add other destination types as they are implemented)
+
+## Environment Variables
+
+The following environment variables can be used to override configuration:
+
+- `GITHUB_TOKEN`: GitHub API token
+- `JFROG_URL`: JFrog Artifactory URL
+- `JFROG_USER`: JFrog username
+- `JFROG_PASSWORD`: JFrog password
+
+## Best Practices
+
+1. Use environment variables for sensitive information
+2. Validate configuration before use
+3. Provide meaningful error messages
+4. Use appropriate default values
+5. Document all configuration options
+6. Handle missing or invalid values gracefully
+7. Support both file-based and environment-based configuration 
