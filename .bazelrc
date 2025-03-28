@@ -1,6 +1,7 @@
 # Command Line Reference
 # https://bazel.build/reference/command-line-reference
 import %workspace%/tools/rc/correctness.bazelrc
+import %workspace%/.buildbuddy.bazelrc
 
 common --enable_platform_specific_config
 
@@ -24,3 +25,5 @@ build --define=gotags=purego
 # Toolchain Debugging
 # https://bazel.build/extending/toolchains#debugging-toolchains
 build:debug --toolchain_resolution_debug=".*"
+
+try-import %workspace%/user.bazelrc

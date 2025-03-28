@@ -1,0 +1,26 @@
+# BuildBuddy configuration
+# Common BuildBuddy settings
+build:ci --build_metadata=ROLE=CI
+build:ci --build_metadata=VISIBILITY=PUBLIC
+
+# Remote cache and execution settings
+build --bes_backend=grpcs://remote.buildbuddy.io
+build --bes_results_url=https://app.buildbuddy.io/invocation/
+build --remote_cache=grpcs://remote.buildbuddy.io
+build --remote_timeout=3600
+build --noremote_upload_local_results # Uploads logs & artifacts without writing to cache
+
+# Cache compression settings
+build --remote_cache_compression
+build --experimental_remote_cache_compression_threshold=100
+
+# Profile and output settings
+build --noslim_profile
+build --nolegacy_important_outputs
+build --experimental_profile_include_target_label
+build --experimental_profile_include_primary_output
+
+# Remote build execution config
+build:rbe --remote_executor=grpcs://remote.buildbuddy.io
+build:rbe --jobs=100
+build:rbe --remote_upload_local_results
