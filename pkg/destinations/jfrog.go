@@ -28,7 +28,9 @@ type JFrogDestination struct {
 	logger *logrus.Logger
 }
 
-// NewJFrogDestination creates a new JFrog destination.
+// NewJFrogDestination returns a new JFrogDestination instance configured for interacting with JFrog Artifactory.
+// It leverages the provided configuration to set endpoint and credentials and uses the supplied logger for logging.
+// The function also initializes an HTTP client for issuing requests to the server.
 func NewJFrogDestination(config JFrogConfig, logger *logrus.Logger) *JFrogDestination {
 	return &JFrogDestination{
 		config: config,

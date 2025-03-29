@@ -10,7 +10,10 @@ import (
 	"github.com/albertocavalcante/garf/pkg/progress"
 )
 
-// DownloadArtifact downloads a GitHub Release artifact to a temporary directory.
+// DownloadArtifact downloads a GitHub release artifact from the specified URL into a temporary directory.
+// It creates a temporary directory, retrieves the artifact via an HTTP GET request, and saves the file using the base name from the URL.
+// If a non-nil progress function is provided, the download progress is tracked and reported.
+// The function returns the full file path of the downloaded artifact, or an error if any step of the download process fails.
 func DownloadArtifact(artifactURL string, progressFunc progress.ProgressFunc) (string, error) {
 	tempDir, err := os.MkdirTemp("", "garf-download-")
 	if err != nil {

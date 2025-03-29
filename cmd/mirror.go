@@ -104,7 +104,7 @@ func (f *MirrorFlags) addFlags(cmd *cobra.Command) {
 	)
 }
 
-// ParseProperties converts the properties array into a map.
+// ParseProperties converts a slice of property strings formatted as "key=value" into a map. It splits each string at the first "=" character, trimming any surrounding whitespace from both the key and value. Only properties that result in exactly two parts are included in the returned map.
 func ParseProperties(props []string) map[string]string {
 	result := make(map[string]string)
 
@@ -122,7 +122,7 @@ func ParseProperties(props []string) map[string]string {
 
 // ValidateAndGetConfig validates required flags and environment variables and returns a JFrog config.
 // Password priority: command-line flag > environment variable
-// The password can also be provided via stdin using the --jfrog-password-stdin flag.
+// ValidateAndGetConfig validates that the mirror source, destination, and JFrog Artifactory credentials (URL, user, and password) are provided via command-line flags or environment variables, and returns a new JFrog configuration. It prioritizes flag values over environment variables and supports supplying the password via stdin using the --jfrog-password-stdin flag. An error is returned if any required value is missing.
 func ValidateAndGetConfig(
 	source, destination, jfrogURL, jfrogUser, jfrogPassword string,
 ) (*destinations.JFrogConfig, error) {
@@ -179,7 +179,9 @@ type ZipExtractionParams struct {
 	opts     *core.MirrorOptions
 }
 
-// handleZipExtraction handles the extraction of a zip file and mirrors the extracted content.
+// HandleZipExtraction extracts a single file from the zip archive specified in the artifact's location,
+// updates the artifact with the extracted file's name and location, and mirrors the extracted content using
+// the provided mirror, options, and context. It returns an error if any step of the extraction or mirroring process fails.
 func handleZipExtraction(params ZipExtractionParams) error {
 	// Create temporary directory for extraction
 	tempDir, err := os.MkdirTemp("", "garf-unzip-*")
@@ -246,7 +248,10 @@ func (f *MirrorFlags) setupDestination(m *mirror.DefaultMirror, logger *logrus.L
 	return nil
 }
 
-// createArtifact creates a new artifact from the given flags.
+// createArtifact constructs a new artifact based on the provided mirror flags.
+// It sets the artifact's name using the base name of the source path and initially assigns the source as its location.
+// If a file path is specified via the FromFile flag, that value overrides the source for the location.
+// Additionally, it parses the Properties flag to populate the artifact's metadata.
 func createArtifact(flags *MirrorFlags) *core.Artifact {
 	artifact := &core.Artifact{
 		Name:     filepath.Base(flags.Source),
@@ -261,7 +266,10 @@ func createArtifact(flags *MirrorFlags) *core.Artifact {
 	return artifact
 }
 
-// createMirrorOptions creates mirror options from the given flags.
+// createMirrorOptions constructs a new MirrorOptions instance configured from command-line flags and context.
+// It inverts the Raw flag to determine whether to preserve the original structure,
+// applies a default concurrency level, and sets dry-run options based on the DryRun and DryRunMode flags.
+// The provided context supports cancellation of the mirroring operation.
 func createMirrorOptions(ctx context.Context, flags *MirrorFlags) *core.MirrorOptions {
 	return &core.MirrorOptions{
 		PreserveStructure: !flags.Raw,
@@ -282,7 +290,9 @@ type MirrorResultsParams struct {
 	opts     *core.MirrorOptions
 }
 
-// processMirrorResults processes the results from the mirror operation.
+// processMirrorResults iterates over mirror operation results, logging any errors encountered during mirroring.
+// If the Unzip flag is enabled and a destination file is identified as a zip archive, it attempts extraction using the provided parameters.
+// It returns the last error encountered during processing, or nil if all operations complete successfully.
 func processMirrorResults(params MirrorResultsParams) error {
 	var lastErr error
 
@@ -442,7 +452,10 @@ func (f *MirrorFlags) prepareArtifact(ctx context.Context) (*core.Artifact, *cor
 	return artifact, opts
 }
 
-// readPasswordFromStdin reads a password from stdin.
+// readPasswordFromStdin reads a password from the standard input (stdin).
+//
+// It returns the password if successfully read and non-empty. If reading from stdin fails,
+// if no input is provided, or if the trimmed password is empty, it returns an error.
 func readPasswordFromStdin() (string, error) {
 	scanner := bufio.NewScanner(os.Stdin)
 	if !scanner.Scan() {
@@ -568,7 +581,8 @@ func (f *MirrorFlags) RunE(cmd *cobra.Command, args []string) error {
 	return processMirrorResults(params)
 }
 
-// NewMirrorCmd creates a new mirror command.
+// NewMirrorCmd returns a new Cobra command configured to mirror artifacts from a source to a destination.
+// It sets up the command's usage, description, examples, and flags—enabling users to mirror artifacts using either a configuration file or direct command-line flags.
 func NewMirrorCmd() *cobra.Command {
 	flags := &MirrorFlags{}
 	cmd := &cobra.Command{

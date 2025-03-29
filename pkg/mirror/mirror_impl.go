@@ -19,7 +19,8 @@ type DefaultMirror struct {
 	mu           sync.RWMutex
 }
 
-// NewDefaultMirror creates a new DefaultMirror instance.
+// NewDefaultMirror creates and returns a new DefaultMirror instance with initialized maps for sources and destinations.
+// It uses the provided logger for logging; if nil is passed, a new logrus.Logger is instantiated.
 func NewDefaultMirror(logger *logrus.Logger) *DefaultMirror {
 	if logger == nil {
 		logger = logrus.New()
