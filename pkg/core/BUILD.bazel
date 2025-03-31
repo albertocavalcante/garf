@@ -1,21 +1,21 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "artifact",
+    name = "core",
     srcs = [
-        "parser.go",
-        "types.go",
+        "interfaces.go",
+        "options.go",
     ],
-    importpath = "github.com/albertocavalcante/garf/artifact",
+    importpath = "github.com/albertocavalcante/garf/pkg/core",
     visibility = ["//visibility:public"],
 )
 
 go_test(
-    name = "artifact_test",
+    name = "core_test",
     size = "small",
-    srcs = ["parser_test.go"],
+    srcs = ["core_test.go"],
     deps = [
-        ":artifact",
+        ":core",
         "@com_github_stretchr_testify//require",
     ],
 )

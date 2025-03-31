@@ -1,0 +1,24 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "destinations",
+    srcs = ["jfrog.go"],
+    importpath = "github.com/albertocavalcante/garf/pkg/destinations",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/core",
+        "@com_github_sirupsen_logrus//:logrus",
+    ],
+)
+
+go_test(
+    name = "destinations_test",
+    size = "small",
+    srcs = ["jfrog_test.go"],
+    deps = [
+        ":destinations",
+        "//pkg/core",
+        "@com_github_sirupsen_logrus//:logrus",
+        "@com_github_stretchr_testify//require",
+    ],
+)

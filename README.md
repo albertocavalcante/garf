@@ -93,6 +93,45 @@ bazel run //:garf -- mirror \
 
 This will extract the file (e.g., `bazel_nojdk-7.6.0-windows-x86_64.exe`) from the zip and upload it directly.
 
+### Dry Run Mode
+
+The mirror command supports dry run modes to help with testing and validation without making actual changes to Artifactory. There are two dry run modes available:
+
+#### Skip All Operations
+
+This mode validates the command syntax and configuration without performing any actual operations:
+
+```sh
+bazel run //:garf -- mirror \
+  --source https://github.com/bazelbuild/bazel/releases/download/7.6.0/bazel_nojdk-7.6.0-windows-x86_64.zip \
+  --destination tools-local \
+  --dry-run
+```
+
+This is useful for:
+- Testing command syntax
+- Validating configuration
+- Checking environment variables
+- Verifying artifact URLs
+
+#### Skip Only Upload
+
+This mode downloads and processes artifacts but skips uploading to Artifactory:
+
+```sh
+bazel run //:garf -- mirror \
+  --source https://github.com/bazelbuild/bazel/releases/download/7.6.0/bazel_nojdk-7.6.0-windows-x86_64.zip \
+  --destination tools-local \
+  --dry-run \
+  --dry-run-mode upload
+```
+
+This is useful for:
+- Local development without Artifactory access
+- Testing artifact processing without uploading
+- Validating download and processing logic
+- CI/CD environments where Artifactory is not available
+
 ## Command Reference
 
 ### Mirror Command
@@ -111,6 +150,8 @@ garf mirror [OPTIONS]
 | `--raw` | | Use the full URL path structure rather than parsed coordinates |
 | `--properties` | | Add properties to the artifact (can be used multiple times) |
 | `--unzip` | | Extract and upload the content from zip files with a single file |
+| `--dry-run` | | Perform a dry run without making actual changes |
+| `--dry-run-mode` | | Dry run mode: 'all' (skip all operations), 'upload' (skip only upload to Artifactory) |
 
 ## Path Organization
 

@@ -1,29 +1,40 @@
 package cmd_test
 
 import (
-	"archive/zip"
+	"bytes"
+	"context"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/albertocavalcante/garf/artifact"
 	"github.com/albertocavalcante/garf/cmd"
+	"github.com/albertocavalcante/garf/pkg/core"
+	"github.com/albertocavalcante/garf/pkg/mirror"
+	"github.com/albertocavalcante/garf/pkg/sources"
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
 
 // configTestCase defines a test case for ValidateAndGetConfig testing.
 type configTestCase struct {
-	name        string
-	source      string
-	destination string
-	envVars     map[string]string
-	shouldErr   bool
+	name          string
+	source        string
+	destination   string
+	jfrogURL      string
+	jfrogUser     string
+	jfrogPassword string
+	envVars       map[string]string
+	shouldErr     bool
 }
 
 // validateConfigTestCases contains all test cases for ValidateAndGetConfig.
 var validateConfigTestCases = []configTestCase{
 	{
-		name:        "Valid config with all required params",
+		name:        "Valid config with all required params via env vars",
 		source:      "https://github.com/example/repo/releases/download/v1.0/file.zip",
 		destination: "repo-local",
 		envVars: map[string]string{
@@ -32,6 +43,16 @@ var validateConfigTestCases = []configTestCase{
 			"JFROG_PASSWORD": "password",
 		},
 		shouldErr: false,
+	},
+	{
+		name:          "Valid config with all required params via flags",
+		source:        "https://github.com/example/repo/releases/download/v1.0/file.zip",
+		destination:   "repo-local",
+		jfrogURL:      "https://example.jfrog.io/artifactory",
+		jfrogUser:     "user",
+		jfrogPassword: "password",
+		envVars:       map[string]string{},
+		shouldErr:     false,
 	},
 	{
 		name:        "Missing source",
@@ -85,6 +106,20 @@ var validateConfigTestCases = []configTestCase{
 		},
 		shouldErr: true,
 	},
+	{
+		name:          "Flag overrides env var",
+		source:        "https://github.com/example/repo/releases/download/v1.0/file.zip",
+		destination:   "repo-local",
+		jfrogURL:      "https://flag.example.com/artifactory",
+		jfrogUser:     "flag-user",
+		jfrogPassword: "flag-password",
+		envVars: map[string]string{
+			"JFROG_URL":      "https://env.example.com/artifactory",
+			"JFROG_USER":     "env-user",
+			"JFROG_PASSWORD": "env-password",
+		},
+		shouldErr: false,
+	},
 }
 
 // TestValidateAndGetConfig tests the ValidateAndGetConfig function with various
@@ -116,209 +151,170 @@ func runValidateConfigTest(t *testing.T, tc configTestCase) {
 	}
 
 	// Run the function
-	config, err := cmd.ValidateAndGetConfig(tc.source, tc.destination)
+	config, err := cmd.ValidateAndGetConfig(tc.source, tc.destination, tc.jfrogURL, tc.jfrogUser, tc.jfrogPassword)
 
 	// Verify results
 	if tc.shouldErr {
 		require.Error(t, err, "Expected error for invalid input")
 		require.Nil(t, config, "Config should be nil when error occurs")
+
+		return
+	}
+
+	require.NoError(t, err, "No error expected for valid input")
+	require.NotNil(t, config, "Config should not be nil")
+
+	// Check if flag values take precedence
+	if tc.jfrogURL != "" {
+		require.Equal(t, tc.jfrogURL, config.URL)
 	} else {
-		require.NoError(t, err, "No error expected for valid input")
-		require.NotNil(t, config, "Config should not be nil")
-		require.Equal(t, tc.envVars["JFROG_URL"], config.Url)
+		require.Equal(t, tc.envVars["JFROG_URL"], config.URL)
+	}
+
+	if tc.jfrogUser != "" {
+		require.Equal(t, tc.jfrogUser, config.User)
+	} else {
 		require.Equal(t, tc.envVars["JFROG_USER"], config.User)
+	}
+
+	if tc.jfrogPassword != "" {
+		require.Equal(t, tc.jfrogPassword, config.Password)
+	} else {
 		require.Equal(t, tc.envVars["JFROG_PASSWORD"], config.Password)
 	}
 }
 
-// TestConstructTargetPath tests the ConstructTargetPath function with different
-// coordinate types and raw options.
-func TestConstructTargetPath(t *testing.T) {
+// TestParsePropertiesBasic tests basic property parsing functionality.
+func TestParsePropertiesBasic(t *testing.T) {
 	tests := []struct {
-		name        string
-		repoKey     string
-		coordinates *artifact.ArtifactCoordinates
-		raw         bool
-		expected    string
+		name     string
+		props    []string
+		expected map[string]string
 	}{
 		{
-			name:    "Regular parsed coordinates",
-			repoKey: "repo-local",
-			coordinates: &artifact.ArtifactCoordinates{
-				Host:     "github.com",
-				Org:      "org",
-				Repo:     "repo",
-				Version:  "v1.0",
-				Artifact: "file.zip",
-				RawPath:  "org/repo/releases/download/v1.0/file.zip",
-			},
-			raw:      false,
-			expected: "repo-local/github.com/org/repo/v1.0/file.zip",
+			name:     "Empty properties",
+			props:    []string{},
+			expected: map[string]string{},
 		},
 		{
-			name:    "Raw path coordinates",
-			repoKey: "repo-local",
-			coordinates: &artifact.ArtifactCoordinates{
-				Host:     "github.com",
-				Org:      "org",
-				Repo:     "repo",
-				Version:  "v1.0",
-				Artifact: "file.zip",
-				RawPath:  "org/repo/releases/download/v1.0/file.zip",
+			name: "Single property",
+			props: []string{
+				"type=toolchain",
 			},
-			raw:      true,
-			expected: "repo-local/github.com/org/repo/releases/download/v1.0/file.zip",
+			expected: map[string]string{
+				"type": "toolchain",
+			},
+		},
+		{
+			name: "Multiple properties",
+			props: []string{
+				"type=toolchain",
+				"platform=windows",
+				"version=1.0.0",
+			},
+			expected: map[string]string{
+				"type":     "toolchain",
+				"platform": "windows",
+				"version":  "1.0.0",
+			},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := cmd.ConstructTargetPath(tc.repoKey, tc.coordinates, tc.raw)
+			result := cmd.ParseProperties(tc.props)
 			require.Equal(t, tc.expected, result)
 		})
 	}
 }
 
-// setupZipTest creates a test environment with a zip file and test file.
-func setupZipTest(t *testing.T) (string, string, string, *artifact.ArtifactCoordinates) {
-	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "zip-test-")
-	require.NoError(t, err)
-
-	// Create a test file and zip it
-	testFilePath := filepath.Join(tempDir, "testfile.txt")
-	testFileContent := "test content"
-	err = os.WriteFile(testFilePath, []byte(testFileContent), 0o644)
-	require.NoError(t, err)
-
-	zipPath := filepath.Join(tempDir, "test.zip")
-	createZip(t, zipPath, testFilePath)
-
-	// Create test coordinates
-	coordinates := &artifact.ArtifactCoordinates{
-		Host:     "example.com",
-		Artifact: "test.zip",
-		RawPath:  "path/to/test.zip",
-	}
-
-	return tempDir, zipPath, testFileContent, coordinates
-}
-
-// runZipExtractionTest executes a single test case for HandleZipExtraction.
-func runZipExtractionTest(
-	t *testing.T,
-	flags *cmd.MirrorFlags,
-	location, tempDir, testFileContent string,
-	coordinates *artifact.ArtifactCoordinates,
-	shouldExtract bool,
-) {
-	// Make a copy of the coordinates for this test
-	testCoordinates := &artifact.ArtifactCoordinates{
-		Host:     coordinates.Host,
-		Artifact: coordinates.Artifact,
-		RawPath:  coordinates.RawPath,
-	}
-
-	// Call the exported version of handleZipExtraction
-	newLocation, err := cmd.HandleZipExtractionForTest(flags, location, tempDir, testCoordinates)
-	require.NoError(t, err)
-
-	if shouldExtract {
-		// Verify extraction occurred
-		require.NotEqual(t, location, newLocation, "Should have a new location after extraction")
-		require.Equal(t, "testfile.txt", testCoordinates.Artifact, "Artifact name should be updated")
-
-		// Verify the extracted file content
-		content, err := os.ReadFile(newLocation)
-		require.NoError(t, err)
-		require.Equal(t, testFileContent, string(content), "Extracted file content should match")
-	} else {
-		// Verify no extraction occurred
-		require.Equal(t, location, newLocation, "Location should not change")
-		require.Equal(t, "test.zip", testCoordinates.Artifact, "Artifact name should not change")
-	}
-}
-
-// TestHandleZipExtraction tests the zip extraction functionality.
-func TestHandleZipExtraction(t *testing.T) {
-	// Set up the test environment
-	tempDir, zipPath, testFileContent, coordinates := setupZipTest(t)
-	defer os.RemoveAll(tempDir)
-
-	// Define test cases
+// TestParsePropertiesInvalid tests invalid property parsing.
+func TestParsePropertiesInvalid(t *testing.T) {
 	tests := []struct {
-		name          string
-		unzipFlag     bool
-		location      string
-		tempDir       string
-		shouldExtract bool
+		name     string
+		props    []string
+		expected map[string]string
 	}{
 		{
-			name:          "Extract with unzip flag",
-			unzipFlag:     true,
-			location:      zipPath,
-			tempDir:       tempDir,
-			shouldExtract: true,
+			name: "Invalid property format",
+			props: []string{
+				"type=toolchain",
+				"invalid-property",
+				"platform=windows",
+			},
+			expected: map[string]string{
+				"type":     "toolchain",
+				"platform": "windows",
+			},
 		},
 		{
-			name:          "No extraction without unzip flag",
-			unzipFlag:     false,
-			location:      zipPath,
-			tempDir:       tempDir,
-			shouldExtract: false,
-		},
-		{
-			name:          "No extraction for non-zip file",
-			unzipFlag:     true,
-			location:      filepath.Join(tempDir, "testfile.txt"),
-			tempDir:       tempDir,
-			shouldExtract: false,
+			name: "Empty property value",
+			props: []string{
+				"type=",
+			},
+			expected: map[string]string{
+				"type": "",
+			},
 		},
 	}
 
-	// Run test cases
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			flags := &cmd.MirrorFlags{
-				Unzip: tc.unzipFlag,
-			}
-
-			runZipExtractionTest(t, flags, tc.location, tc.tempDir, testFileContent, coordinates, tc.shouldExtract)
+			result := cmd.ParseProperties(tc.props)
+			require.Equal(t, tc.expected, result)
 		})
 	}
 }
 
-// Helper function to create a zip file with a single file inside.
-func createZip(t *testing.T, zipPath, filePath string) {
-	zipFile, err := os.Create(zipPath)
-	require.NoError(t, err)
-	defer zipFile.Close()
+// TestParsePropertiesSpecial tests property parsing with special cases.
+func TestParsePropertiesSpecial(t *testing.T) {
+	tests := []struct {
+		name     string
+		props    []string
+		expected map[string]string
+	}{
+		{
+			name: "Property with equals in value",
+			props: []string{
+				"type=toolchain",
+				"path=dir1=dir2=dir3",
+			},
+			expected: map[string]string{
+				"type": "toolchain",
+				"path": "dir1=dir2=dir3",
+			},
+		},
+		{
+			name: "Multiple equals signs",
+			props: []string{
+				"path=dir1=dir2=dir3",
+			},
+			expected: map[string]string{
+				"path": "dir1=dir2=dir3",
+			},
+		},
+		{
+			name: "Whitespace in key and value",
+			props: []string{
+				" type = toolchain ",
+			},
+			expected: map[string]string{
+				"type": "toolchain",
+			},
+		},
+	}
 
-	writer := zip.NewWriter(zipFile)
-	defer writer.Close()
-
-	fileInfo, err := os.Stat(filePath)
-	require.NoError(t, err)
-
-	fileContent, err := os.ReadFile(filePath)
-	require.NoError(t, err)
-
-	fileHeader, err := zip.FileInfoHeader(fileInfo)
-	require.NoError(t, err)
-
-	fileHeader.Method = zip.Deflate
-
-	fileWriter, err := writer.CreateHeader(fileHeader)
-	require.NoError(t, err)
-
-	_, err = fileWriter.Write(fileContent)
-	require.NoError(t, err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := cmd.ParseProperties(tc.props)
+			require.Equal(t, tc.expected, result)
+		})
+	}
 }
 
-// saveEnvironment preserves the current environment variables for restoration later.
+// Helper functions for environment management.
 func saveEnvironment(keys []string) map[string]string {
 	env := make(map[string]string)
-
 	for _, key := range keys {
 		env[key] = os.Getenv(key)
 	}
@@ -326,18 +322,460 @@ func saveEnvironment(keys []string) map[string]string {
 	return env
 }
 
-// restoreEnvironment sets environment variables back to their original values.
 func restoreEnvironment(env map[string]string) {
-	for k, v := range env {
-		if v == "" {
-			os.Unsetenv(k)
+	for key, value := range env {
+		if value == "" {
+			os.Unsetenv(key)
 		} else {
-			os.Setenv(k, v)
+			os.Setenv(key, value)
 		}
 	}
 }
 
-// Note: We're not testing processAndUploadArtifact or the full NewMirrorCmd directly
-// because they have external dependencies that would require more complex mocking.
-// In a more complete test suite, you would mock the core.DownloadArtifact and
-// core.NewJFrogClient functions to isolate the test from external dependencies.
+// mockHTTPClient is a mock HTTP client that returns predefined responses.
+type mockHTTPClient struct {
+	responses map[string]*http.Response
+}
+
+func newMockHTTPClient() *mockHTTPClient {
+	return &mockHTTPClient{
+		responses: make(map[string]*http.Response),
+	}
+}
+
+func (m *mockHTTPClient) RoundTrip(req *http.Request) (*http.Response, error) {
+	// For GitHub URLs, return a mock response
+	if strings.Contains(req.URL.String(), "github.com") {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader([]byte("mock content"))),
+		}, nil
+	}
+
+	// For other URLs, return a 404
+	return &http.Response{
+		StatusCode: http.StatusNotFound,
+		Body:       io.NopCloser(bytes.NewReader([]byte{})),
+	}, nil
+}
+
+// mockDestination is a mock destination that does nothing.
+type mockDestination struct {
+	logger *logrus.Logger
+}
+
+func newMockDestination(logger *logrus.Logger) *mockDestination {
+	return &mockDestination{logger: logger}
+}
+
+func (m *mockDestination) Upload(ctx context.Context, artifact *core.Artifact, reader io.Reader) error {
+	return nil
+}
+
+func (m *mockDestination) Validate() error {
+	return nil
+}
+
+func (m *mockDestination) Close() error {
+	return nil
+}
+
+func (m *mockDestination) Exists(ctx context.Context, artifact *core.Artifact) (bool, error) {
+	return false, nil
+}
+
+func (m *mockDestination) Put(ctx context.Context, artifact *core.Artifact, reader io.Reader) error {
+	return nil
+}
+
+// setupMockMirrorForTest creates and configures a mock mirror for testing.
+func setupMockMirrorForTest(t *testing.T) *mirror.DefaultMirror {
+	t.Helper()
+
+	logger := logrus.New()
+	logger.SetOutput(io.Discard) // Suppress log output during tests
+
+	// Setup a mock HTTP client to avoid real network calls
+	mockClient := &http.Client{
+		Transport: &mockHTTPClient{},
+	}
+
+	// Create a GitHub source with the mock client
+	source := sources.NewGitHubSource(logger)
+	source.SetClient(mockClient)
+
+	// Create a test mirror
+	testMirror := mirror.NewDefaultMirror(logger)
+
+	// Add the source and destination
+	err := testMirror.AddSource("default", source)
+	require.NoError(t, err)
+
+	err = testMirror.AddDestination("default", newMockDestination(logger))
+	require.NoError(t, err)
+
+	return testMirror
+}
+
+type testCase struct {
+	name                   string
+	useConfig              bool
+	source                 string
+	destination            string
+	jfrogURL               string
+	jfrogUser              string
+	jfrogPassword          string
+	jfrogPasswordFromStdin bool
+	stdinInput             string
+	wantErr                bool
+	errMsg                 string
+}
+
+func TestMirrorCmdRequiredFlags(t *testing.T) {
+	configPath, cleanup := setupTestEnvironment(t)
+	defer cleanup()
+
+	testCases := []testCase{
+		{
+			name:    "missing required flags",
+			wantErr: true,
+			errMsg:  "required flag(s) \"destination\", \"source\" not set",
+		},
+		{
+			name:      "using config file",
+			useConfig: true,
+			wantErr:   false,
+		},
+		{
+			name:        "source and destination directly",
+			source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.tar.gz",
+			destination: "http://localhost:8081/artifactory/generic-local/artifact.tar.gz",
+			wantErr:     false,
+		},
+		{
+			name:          "with JFrog credentials as flags",
+			source:        "https://github.com/owner/repo/releases/download/v1.0.0/artifact.tar.gz",
+			destination:   "repo-local",
+			jfrogURL:      "http://localhost:8081/artifactory",
+			jfrogUser:     "flag-user",
+			jfrogPassword: "flag-password",
+			wantErr:       false,
+		},
+		{
+			name:                   "with JFrog password from stdin",
+			source:                 "https://github.com/owner/repo/releases/download/v1.0.0/artifact.tar.gz",
+			destination:            "repo-local",
+			jfrogURL:               "http://localhost:8081/artifactory",
+			jfrogUser:              "stdin-user",
+			jfrogPasswordFromStdin: true,
+			stdinInput:             "stdin-password",
+			wantErr:                false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			runTestCase(t, tc, configPath)
+		})
+	}
+}
+
+// setupTestCommand creates and configures a test command with the given test case.
+func setupTestCommand(t *testing.T, tc testCase, configPath string) (*cobra.Command, *cmd.MirrorFlags) {
+	t.Helper()
+
+	// Setup test mirror
+	testMirror := setupMockMirrorForTest(t)
+
+	// Create command
+	mirrorCmd := cmd.NewMirrorCmd()
+	flags := &cmd.MirrorFlags{
+		TestMirror: testMirror,
+	}
+
+	// Set flags directly
+	setDirectFlags(flags, tc, configPath)
+
+	// Set command arguments
+	args := buildCommandArgs(tc, configPath)
+	mirrorCmd.SetArgs(args)
+
+	// Set custom RunE function
+	mirrorCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return flags.RunE(cmd, args)
+	}
+
+	return mirrorCmd, flags
+}
+
+// setDirectFlags sets flags directly on the MirrorFlags struct.
+func setDirectFlags(flags *cmd.MirrorFlags, tc testCase, configPath string) {
+	if tc.useConfig {
+		flags.ConfigFile = configPath
+	}
+
+	if tc.source != "" {
+		flags.Source = tc.source
+	}
+
+	if tc.destination != "" {
+		flags.Destination = tc.destination
+	}
+
+	if tc.jfrogURL != "" {
+		flags.JFrogURL = tc.jfrogURL
+	}
+
+	if tc.jfrogUser != "" {
+		flags.JFrogUser = tc.jfrogUser
+	}
+
+	if tc.jfrogPassword != "" {
+		flags.JFrogPassword = tc.jfrogPassword
+	}
+
+	if tc.jfrogPasswordFromStdin {
+		flags.JFrogPasswordFromStdin = true
+	}
+}
+
+// buildCommandArgs builds the command-line arguments for the test case.
+func buildCommandArgs(tc testCase, configPath string) []string {
+	args := []string{}
+
+	if tc.useConfig {
+		args = append(args, "--config", configPath)
+	}
+
+	if tc.source != "" {
+		args = append(args, "--source", tc.source)
+	}
+
+	if tc.destination != "" {
+		args = append(args, "--destination", tc.destination)
+	}
+
+	if tc.jfrogURL != "" {
+		args = append(args, "--jfrog-url", tc.jfrogURL)
+	}
+
+	if tc.jfrogUser != "" {
+		args = append(args, "--jfrog-user", tc.jfrogUser)
+	}
+
+	if tc.jfrogPassword != "" {
+		args = append(args, "--jfrog-password", tc.jfrogPassword)
+	}
+
+	if tc.jfrogPasswordFromStdin {
+		args = append(args, "--jfrog-password-stdin")
+	}
+
+	return args
+}
+
+// simulateStdinInput simulates input from stdin for testing.
+func simulateStdinInput(t *testing.T, input string) (*os.File, *os.File, func()) {
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+
+	oldStdin := os.Stdin
+	os.Stdin = r
+
+	_, err = w.WriteString(input + "\n")
+	require.NoError(t, err)
+
+	cleanup := func() {
+		w.Close()
+
+		os.Stdin = oldStdin
+	}
+
+	return r, w, cleanup
+}
+
+// validateCommandResult validates the result of command execution.
+func validateCommandResult(t *testing.T, err error, tc testCase) {
+	t.Helper()
+
+	if tc.wantErr {
+		require.Error(t, err)
+		require.Contains(t, err.Error(), tc.errMsg)
+
+		return
+	}
+
+	require.NoError(t, err)
+}
+
+func runTestCase(t *testing.T, tc testCase, configPath string) {
+	t.Helper()
+
+	// Setup stdin if needed
+	if tc.jfrogPasswordFromStdin {
+		_, _, cleanup := simulateStdinInput(t, tc.stdinInput)
+		defer cleanup()
+	}
+
+	// Setup test command
+	mirrorCmd, _ := setupTestCommand(t, tc, configPath)
+
+	// Run command
+	err := mirrorCmd.Execute()
+
+	// Validate results
+	validateCommandResult(t, err, tc)
+}
+
+func setupMockMirror(t *testing.T) *mirror.DefaultMirror {
+	logger := logrus.New()
+	logger.SetOutput(io.Discard) // Suppress log output in tests
+
+	// Create mock HTTP client
+	mockClient := newMockHTTPClient()
+
+	// Create and configure source
+	source := sources.NewGitHubSource(logger)
+	source.SetClient(&http.Client{Transport: mockClient})
+
+	// Create mirror
+	mirror := mirror.NewDefaultMirror(logger)
+
+	// Add source and destination
+	err := mirror.AddSource("default", source)
+	require.NoError(t, err)
+
+	err = mirror.AddDestination("jfrog", newMockDestination(logger))
+	require.NoError(t, err)
+
+	return mirror
+}
+
+func TestMirrorCmdFlagRegistration(t *testing.T) {
+	// Create a new mirror command
+	mirrorCmd := cmd.NewMirrorCmd()
+
+	// Test that all expected flags are registered
+	expectedFlags := []string{
+		"config",
+		"source",
+		"destination",
+		"from-file",
+		"raw",
+		"properties",
+		"unzip",
+		"dry-run",
+		"dry-run-mode",
+		"jfrog-url",
+		"jfrog-user",
+		"jfrog-password",
+	}
+
+	for _, flagName := range expectedFlags {
+		flag := mirrorCmd.Flags().Lookup(flagName)
+		require.NotNil(t, flag, "Flag %s should be registered", flagName)
+	}
+
+	// Test that flags are not registered multiple times
+	// This will panic if flags are registered twice
+	require.NotPanics(t, func() {
+		cmd.NewMirrorCmd()
+	})
+}
+
+func TestMirrorFlagsValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		flags     *cmd.MirrorFlags
+		wantError bool
+	}{
+		{
+			name: "valid dry run mode all",
+			flags: &cmd.MirrorFlags{
+				DryRun:     true,
+				DryRunMode: "all",
+			},
+			wantError: false,
+		},
+		{
+			name: "valid dry run mode upload",
+			flags: &cmd.MirrorFlags{
+				DryRun:     true,
+				DryRunMode: "upload",
+			},
+			wantError: false,
+		},
+		{
+			name: "invalid dry run mode",
+			flags: &cmd.MirrorFlags{
+				DryRun:     true,
+				DryRunMode: "invalid",
+			},
+			wantError: true,
+		},
+		{
+			name: "no dry run - no validation needed",
+			flags: &cmd.MirrorFlags{
+				DryRun:     false,
+				DryRunMode: "invalid",
+			},
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.flags.ValidateDryRunMode()
+			if tt.wantError {
+				require.Error(t, err)
+
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
+
+// setupTestEnvironment sets up the test environment with config file and environment variables.
+func setupTestEnvironment(t *testing.T) (string, func()) {
+	t.Helper()
+
+	// Save original environment variables
+	origJfrogURL := os.Getenv("JFROG_URL")
+	origJfrogUser := os.Getenv("JFROG_USER")
+	origJfrogPass := os.Getenv("JFROG_PASSWORD")
+
+	// Set test environment variables
+	os.Setenv("JFROG_URL", "http://localhost:8081")
+	os.Setenv("JFROG_USER", "admin")
+	os.Setenv("JFROG_PASSWORD", "password")
+
+	// Create temporary directory
+	tmpDir := t.TempDir()
+
+	// Create config file
+	configPath := filepath.Join(tmpDir, "test.yaml")
+	configContent := []byte(`
+source:
+  type: github
+  url: https://github.com/owner/repo/releases/download/v1.0.0/artifact.tar.gz
+destination:
+  type: jfrog
+  url: http://localhost:8081/artifactory/generic-local/artifact.tar.gz
+  user: admin
+  password: password
+log_level: info
+concurrent: 4
+`)
+	err := os.WriteFile(configPath, configContent, 0o644)
+	require.NoError(t, err)
+
+	cleanup := func() {
+		os.Setenv("JFROG_URL", origJfrogURL)
+		os.Setenv("JFROG_USER", origJfrogUser)
+		os.Setenv("JFROG_PASSWORD", origJfrogPass)
+	}
+
+	return configPath, cleanup
+}

@@ -5,6 +5,7 @@ alwaysApply: true
 ---
 # Go
 
+- When resolving a linter error, always execute the correspondign unit tests before proceeding to the next linter fix.
 - NEVER change manually `go.mod` and `go.sum`, unless explicitly authorized or instructed.
 - AVOID using the local `go` installation on the host machine. PREFER to use `rules_go` Go SDK. Example:
 
@@ -27,6 +28,14 @@ go mod tidy -v
 
 ## Libraries
 
+- Use the `make` `go-get` target to add third-party dependencies. Example `DEP=github.com/stretchr/testify make go-get`. After run `bazel mod tidy`.
+- Use `github.com/jfrog/jfrog-client-go` to interact with JFrog Artifactory REST APIs.
+- Use `github.com/google/go-github` to interact with GitHub APIs, if needed.
 - Use `github.com/stretchr/testify` for testing. Prefer to use the `require` package.
-- Use the `go-get` target to add third-party dependencies. Example `DEP=github.com/stretchr/testify make go-get`. After run `bazel mod tidy`.
+- Use `github.com/spf13/viper` if you want to enhance CLI configuration.
 
+## Validation
+
+- Once you are done with code changes, run `make test` and confirm all unit tests are passing.
+- Once all unit tests are passing, execute `make lint` and fix the findings before finishing it.
+- Repeat this process until both pass.

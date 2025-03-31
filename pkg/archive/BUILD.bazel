@@ -1,0 +1,18 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "archive",
+    srcs = ["zip.go"],
+    importpath = "github.com/albertocavalcante/garf/pkg/archive",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "archive_test",
+    size = "small",
+    srcs = ["zip_test.go"],
+    deps = [
+        ":archive",
+        "@com_github_stretchr_testify//require",
+    ],
+)

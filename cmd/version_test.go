@@ -1,10 +1,11 @@
-package cmd
+package cmd_test
 
 import (
 	"bytes"
 	"fmt"
 	"testing"
 
+	"github.com/albertocavalcante/garf/cmd"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,9 +22,9 @@ func TestVersionCmd(t *testing.T) {
 			version:    "dev",
 			commitHash: "abc123",
 			buildDate:  "2024-03-28",
-			expectedOutput: fmt.Sprintf(`garf version dev
-commit: abc123
-build date: 2024-03-28
+			expectedOutput: fmt.Sprintf(`Version: dev
+Commit: abc123
+Build Date: 2024-03-28
 `),
 		},
 		{
@@ -31,9 +32,9 @@ build date: 2024-03-28
 			version:    "v1.0.0",
 			commitHash: "def456",
 			buildDate:  "2024-03-29",
-			expectedOutput: fmt.Sprintf(`garf version v1.0.0
-commit: def456
-build date: 2024-03-29
+			expectedOutput: fmt.Sprintf(`Version: v1.0.0
+Commit: def456
+Build Date: 2024-03-29
 `),
 		},
 	}
@@ -41,25 +42,26 @@ build date: 2024-03-29
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Save original values
-			origVersion := Version
-			origCommitHash := CommitHash
-			origBuildDate := BuildDate
+			origVersion := cmd.Version
+			origCommitHash := cmd.CommitHash
+			origBuildDate := cmd.BuildDate
 
 			// Set test values
-			Version = tt.version
-			CommitHash = tt.commitHash
-			BuildDate = tt.buildDate
+			cmd.Version = tt.version
+			cmd.CommitHash = tt.commitHash
+			cmd.BuildDate = tt.buildDate
 
 			// Restore original values after test
 			defer func() {
-				Version = origVersion
-				CommitHash = origCommitHash
-				BuildDate = origBuildDate
+				cmd.Version = origVersion
+				cmd.CommitHash = origCommitHash
+				cmd.BuildDate = origBuildDate
 			}()
 
 			// Create a buffer to capture output
 			var buf bytes.Buffer
-			cmd := NewVersionCmd()
+
+			cmd := cmd.NewVersionCmd()
 			cmd.SetOut(&buf)
 
 			// Execute the command

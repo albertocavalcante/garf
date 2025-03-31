@@ -6,14 +6,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	// Version is the current version of the CLI
-	Version = "dev"
-	// CommitHash is the git commit hash
-	CommitHash = "unknown"
-	// BuildDate is the date the binary was built
-	BuildDate = "unknown"
-)
+// Version is the current version of the CLI.
+var Version = "dev"
+
+// CommitHash is the git commit hash.
+var CommitHash = "unknown"
+
+// BuildDate is the date the binary was built.
+var BuildDate = "unknown"
 
 // NewVersionCmd creates the version command for the CLI.
 func NewVersionCmd() *cobra.Command {
@@ -26,9 +26,10 @@ func NewVersionCmd() *cobra.Command {
 				- Build date`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "garf version %s\n", Version)
-			fmt.Fprintf(out, "commit: %s\n", CommitHash)
-			fmt.Fprintf(out, "build date: %s\n", BuildDate)
+			fmt.Fprintf(out, "Version: %s\n", Version)
+			fmt.Fprintf(out, "Commit: %s\n", CommitHash)
+			fmt.Fprintf(out, "Build Date: %s\n", BuildDate)
+
 			return nil
 		},
 	}

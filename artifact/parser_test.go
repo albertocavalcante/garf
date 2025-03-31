@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/albertocavalcante/garf/artifact"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // verifyCoordinates compares the expected and actual coordinates.
@@ -17,12 +17,12 @@ func verifyCoordinates(t *testing.T, expected, actual *artifact.ArtifactCoordina
 		return
 	}
 
-	assert.Equal(t, expected.Host, actual.Host, "Host should match")
-	assert.Equal(t, expected.Org, actual.Org, "Org should match")
-	assert.Equal(t, expected.Repo, actual.Repo, "Repo should match")
-	assert.Equal(t, expected.Version, actual.Version, "Version should match")
-	assert.Equal(t, expected.Artifact, actual.Artifact, "Artifact should match")
-	assert.Equal(t, expected.RawPath, actual.RawPath, "RawPath should match")
+	require.Equal(t, expected.Host, actual.Host, "Host should match")
+	require.Equal(t, expected.Org, actual.Org, "Org should match")
+	require.Equal(t, expected.Repo, actual.Repo, "Repo should match")
+	require.Equal(t, expected.Version, actual.Version, "Version should match")
+	require.Equal(t, expected.Artifact, actual.Artifact, "Artifact should match")
+	require.Equal(t, expected.RawPath, actual.RawPath, "RawPath should match")
 }
 
 func TestExtractCoordinatesFromURL(t *testing.T) {
@@ -71,14 +71,14 @@ func TestExtractCoordinatesFromURL(t *testing.T) {
 
 			// Check error cases first
 			if tc.expectedError != nil {
-				assert.Error(t, err)
-				assert.Equal(t, tc.expectedError.Error(), err.Error())
+				require.Error(t, err)
+				require.Equal(t, tc.expectedError.Error(), err.Error())
 
 				return
 			}
 
 			// Check success cases
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			verifyCoordinates(t, tc.expectedCoordinates, coordinates)
 		})
 	}

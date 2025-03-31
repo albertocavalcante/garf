@@ -2,8 +2,12 @@ package core
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
+	"github.com/albertocavalcante/garf/pkg/core"
+	"github.com/albertocavalcante/garf/pkg/progress"
 	"github.com/jfrog/jfrog-client-go/artifactory"
 	"github.com/jfrog/jfrog-client-go/artifactory/auth"
 	"github.com/jfrog/jfrog-client-go/artifactory/services"
@@ -51,18 +55,79 @@ func NewJFrogClient(jc *JFrogConfig) (*JFrogClient, error) {
 	return &JFrogClient{rtManager}, nil
 }
 
-// UploadGenericArtifact uploads a generic artifact to Artifactory.
-func (c *JFrogClient) UploadGenericArtifact(file, targetPath string, properties []string) error {
-	opts := artifactory.UploadServiceOptions{
-		FailFast: true,
+// setupProgressReader creates a progress reader if needed.
+func setupProgressReader(content io.Reader, progressFunc progress.ProgressFunc) (io.Reader, error) {
+	if progressFunc == nil {
+		return content, nil
 	}
 
-	params := services.NewUploadParams()
-	params.Pattern = file
-	params.Target = targetPath
+	// Get the total size if available
+	var total int64
 
-	if len(properties) > 0 {
-		targetProps, err := CreateTargetProperties(properties)
+	if seeker, ok := content.(io.Seeker); ok {
+		// Save current position
+		pos, err := seeker.Seek(0, io.SeekCurrent)
+		if err == nil {
+			// Seek to end to get size
+			total, err = seeker.Seek(0, io.SeekEnd)
+			if err == nil {
+				// Restore position
+				_, _ = seeker.Seek(pos, io.SeekStart)
+			}
+		}
+	}
+
+	// Create progress reader
+	return progress.NewReader(content, total, progressFunc), nil
+}
+
+// UploadGenericArtifact uploads a generic artifact to Artifactory.
+func (c *JFrogClient) UploadGenericArtifact(
+	artifact *core.Artifact,
+	content io.Reader,
+	progressFunc progress.ProgressFunc,
+) error {
+	// Create a temporary file to upload from
+	tempFile, err := os.CreateTemp("", "artifact-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %v", err)
+	}
+
+	defer os.Remove(tempFile.Name())
+	defer tempFile.Close()
+
+	// Setup progress reader if needed
+	if progressFunc != nil {
+		reader, err := setupProgressReader(content, progressFunc)
+		if err != nil {
+			return err
+		}
+
+		content = reader
+	}
+
+	// Copy content to temp file
+	if _, err := io.Copy(tempFile, content); err != nil {
+		return fmt.Errorf("failed to write to temp file: %v", err)
+	}
+
+	// Create upload parameters
+	params := services.NewUploadParams()
+	params.Pattern = tempFile.Name()
+	params.Target = artifact.Location
+	params.Flat = true
+	params.Recursive = false
+	params.IncludeDirs = false
+
+	// Set properties if any
+	if len(artifact.Metadata) > 0 {
+		// Convert metadata map to slice of strings
+		var props []string
+		for k, v := range artifact.Metadata {
+			props = append(props, fmt.Sprintf("%s=%s", k, v))
+		}
+
+		targetProps, err := CreateTargetProperties(props)
 		if err != nil {
 			return err
 		}
@@ -70,13 +135,15 @@ func (c *JFrogClient) UploadGenericArtifact(file, targetPath string, properties 
 		params.SetTargetProps(targetProps)
 	}
 
-	totalUploaded, totalFailed, err := c.UploadFiles(opts, params)
+	// Upload the artifact
+	_, totalFailed, err := c.ArtifactoryServicesManager.UploadFiles(artifactory.UploadServiceOptions{}, params)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to upload artifact: %v", err)
 	}
 
-	fmt.Printf("Total uploaded: %d\n", totalUploaded)
-	fmt.Printf("Total failed: %d\n", totalFailed)
+	if totalFailed > 0 {
+		return fmt.Errorf("failed to upload %d files", totalFailed)
+	}
 
 	return nil
 }

@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"github.com/albertocavalcante/garf/pkg/progress"
 )
 
 // DownloadArtifact downloads a GitHub Release artifact to a temporary directory.
-func DownloadArtifact(artifactURL string) (string, error) {
+func DownloadArtifact(artifactURL string, progressFunc progress.ProgressFunc) (string, error) {
 	tempDir, err := os.MkdirTemp("", "garf-download-")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary directory: %w", err)
@@ -34,7 +36,19 @@ func DownloadArtifact(artifactURL string) (string, error) {
 	}
 	defer file.Close()
 
-	_, err = io.Copy(file, resp.Body)
+	// Get total size if available
+	var total int64
+	if resp.ContentLength > 0 {
+		total = resp.ContentLength
+	}
+
+	// Create progress reader if progress function is provided
+	var reader io.Reader = resp.Body
+	if progressFunc != nil {
+		reader = progress.NewReader(resp.Body, total, progressFunc)
+	}
+
+	_, err = io.Copy(file, reader)
 	if err != nil {
 		return "", fmt.Errorf("failed to copy artifact content: %w", err)
 	}

@@ -1,39 +1,31 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "cmd",
+    name = "mirror",
     srcs = [
         "mirror.go",
-        "root.go",
-        "version.go",
+        "mirror_impl.go",
+        "mirror_process.go",
     ],
-    importpath = "github.com/albertocavalcante/garf/cmd",
+    importpath = "github.com/albertocavalcante/garf/pkg/mirror",
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/archive",
         "//pkg/config",
         "//pkg/core",
         "//pkg/destinations",
-        "//pkg/mirror",
+        "//pkg/sources",
         "@com_github_sirupsen_logrus//:logrus",
-        "@com_github_spf13_cobra//:cobra",
     ],
 )
 
 go_test(
-    name = "cmd_test",
+    name = "mirror_test",
     size = "small",
-    srcs = [
-        "mirror_test.go",
-        "version_test.go",
-    ],
+    srcs = ["mirror_test.go"],
     deps = [
-        ":cmd",
+        ":mirror",
         "//pkg/core",
-        "//pkg/mirror",
-        "//pkg/sources",
-        "@com_github_sirupsen_logrus//:logrus",
-        "@com_github_spf13_cobra//:cobra",
         "@com_github_stretchr_testify//require",
     ],
 )

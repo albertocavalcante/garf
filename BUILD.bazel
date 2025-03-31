@@ -39,6 +39,7 @@ go_binary(
 cross_platform_go_binary(
     name = "garf-bin",
     embed = [":garf_lib"],
+    tags = ["manual"],
     x_defs = {
         "github.com/albertocavalcante/garf/cmd.BuildDate": "{BUILD_DATE}",
         "github.com/albertocavalcante/garf/cmd.CommitHash": "{STABLE_GIT_COMMIT}",
@@ -50,6 +51,7 @@ cross_platform_go_binary(
 windows_bin_zips(
     name = "windows-zips",
     base_name = "garf-bin",
+    tags = ["manual"],
     # Uncomment to override the default architectures
     # arches = ["amd64", "arm64"],
     # Uncomment to override the development version
