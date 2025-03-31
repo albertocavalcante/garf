@@ -18,6 +18,7 @@ go_test(
     deps = [
         ":sources",
         "//pkg/core",
+        "@com_github_sirupsen_logrus//:logrus",
         "@com_github_stretchr_testify//require",
     ],
 )
