@@ -1,19 +1,18 @@
 package cmd
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
-	"github.com/albertocavalcante/garf/pkg/archive"
-	"github.com/albertocavalcante/garf/pkg/config"
 	"github.com/albertocavalcante/garf/pkg/core"
+	"github.com/albertocavalcante/garf/pkg/core/config"
 	"github.com/albertocavalcante/garf/pkg/destinations"
+	"github.com/albertocavalcante/garf/pkg/io"
 	"github.com/albertocavalcante/garf/pkg/mirror"
+	"github.com/albertocavalcante/garf/pkg/processor"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -104,22 +103,6 @@ func (f *MirrorFlags) addFlags(cmd *cobra.Command) {
 	)
 }
 
-// ParseProperties converts the properties array into a map.
-func ParseProperties(props []string) map[string]string {
-	result := make(map[string]string)
-
-	for _, prop := range props {
-		parts := strings.SplitN(prop, "=", propertyKeyValueParts)
-		if len(parts) == propertyKeyValueParts {
-			key := strings.TrimSpace(parts[0])
-			value := strings.TrimSpace(parts[1])
-			result[key] = value
-		}
-	}
-
-	return result
-}
-
 // ValidateAndGetConfig validates required flags and environment variables and returns a JFrog config.
 // Password priority: command-line flag > environment variable
 // The password can also be provided via stdin using the --jfrog-password-stdin flag.
@@ -170,54 +153,6 @@ func ValidateAndGetConfig(
 	}, nil
 }
 
-// ZipExtractionParams holds the parameters for zip extraction.
-type ZipExtractionParams struct {
-	ctx      context.Context
-	logger   *logrus.Logger
-	mirror   *mirror.DefaultMirror
-	artifact *core.Artifact
-	opts     *core.MirrorOptions
-}
-
-// handleZipExtraction handles the extraction of a zip file and mirrors the extracted content.
-func handleZipExtraction(params ZipExtractionParams) error {
-	// Create temporary directory for extraction
-	tempDir, err := os.MkdirTemp("", "garf-unzip-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temporary directory: %w", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	extractOpts := archive.ExtractOptions{
-		DestinationDir:       tempDir,
-		PreserveOriginalName: true,
-	}
-
-	extractedPath, err := archive.ExtractSingleFile(params.artifact.Location, extractOpts)
-	if err != nil {
-		return fmt.Errorf("failed to extract zip: %w", err)
-	}
-
-	// Update the artifact name and location for the extracted file
-	params.artifact.Name = filepath.Base(extractedPath)
-	params.artifact.Location = extractedPath
-
-	// Mirror the extracted file
-	extractResults := params.mirror.Mirror(params.ctx, []*core.Artifact{params.artifact}, params.opts)
-	for extractResult := range extractResults {
-		if extractResult.Error != nil {
-			return extractResult.Error
-		}
-	}
-
-	return nil
-}
-
-// createMirror creates a new mirror instance with the given logger.
-func createMirror(logger *logrus.Logger) *mirror.DefaultMirror {
-	return mirror.NewDefaultMirror(logger)
-}
-
 // setupSource configures and adds a source to the mirror.
 func (f *MirrorFlags) setupSource(m *mirror.DefaultMirror, logger *logrus.Logger, config *config.Config) error {
 	source, err := m.SetupSource(logger, config)
@@ -251,7 +186,7 @@ func createArtifact(flags *MirrorFlags) *core.Artifact {
 	artifact := &core.Artifact{
 		Name:     filepath.Base(flags.Source),
 		Location: flags.Source,
-		Metadata: ParseProperties(flags.Properties),
+		Metadata: core.ParseProperties(flags.Properties),
 	}
 
 	if flags.FromFile != "" {
@@ -294,19 +229,17 @@ func processMirrorResults(params MirrorResultsParams) error {
 			continue
 		}
 
-		// Handle unzipping if needed
-		if params.flags.Unzip && archive.IsZipFile(result.DestinationPath) {
-			extractParams := ZipExtractionParams{
-				ctx:      params.opts.Context,
-				logger:   params.logger,
-				mirror:   params.mirror,
-				artifact: params.artifact,
-				opts:     params.opts,
-			}
-
-			if err := handleZipExtraction(extractParams); err != nil {
+		// If unzip is enabled, use the processor package to handle zip files
+		if params.flags.Unzip {
+			if err := processor.ProcessArtifact(
+				params.opts.Context,
+				params.logger,
+				params.mirror,
+				result.Artifact,
+				params.opts,
+			); err != nil {
 				lastErr = err
-				params.logger.WithError(err).Error("Failed to extract zip file")
+				params.logger.WithError(err).Error("Failed to process artifact")
 			}
 		}
 	}
@@ -444,21 +377,7 @@ func (f *MirrorFlags) prepareArtifact(ctx context.Context) (*core.Artifact, *cor
 
 // readPasswordFromStdin reads a password from stdin.
 func readPasswordFromStdin() (string, error) {
-	scanner := bufio.NewScanner(os.Stdin)
-	if !scanner.Scan() {
-		if err := scanner.Err(); err != nil {
-			return "", fmt.Errorf("failed to read password from stdin: %w", err)
-		}
-
-		return "", fmt.Errorf("no password provided via stdin")
-	}
-
-	password := scanner.Text()
-	if strings.TrimSpace(password) == "" {
-		return "", fmt.Errorf("password cannot be empty")
-	}
-
-	return password, nil
+	return io.ReadPasswordFromStdin()
 }
 
 // updateConfigFromFlags updates the configuration with values from command-line flags.

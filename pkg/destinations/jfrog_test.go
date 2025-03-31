@@ -14,6 +14,8 @@ import (
 )
 
 func setupTestServer(t *testing.T) *httptest.Server {
+	t.Helper()
+
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check authentication
 		user, pass, ok := r.BasicAuth()

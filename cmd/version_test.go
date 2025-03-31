@@ -2,7 +2,6 @@ package cmd_test
 
 import (
 	"bytes"
-	"fmt"
 	"testing"
 
 	"github.com/albertocavalcante/garf/cmd"
@@ -22,20 +21,20 @@ func TestVersionCmd(t *testing.T) {
 			version:    "dev",
 			commitHash: "abc123",
 			buildDate:  "2024-03-28",
-			expectedOutput: fmt.Sprintf(`Version: dev
+			expectedOutput: `Version: dev
 Commit: abc123
 Build Date: 2024-03-28
-`),
+`,
 		},
 		{
 			name:       "release version",
 			version:    "v1.0.0",
 			commitHash: "def456",
 			buildDate:  "2024-03-29",
-			expectedOutput: fmt.Sprintf(`Version: v1.0.0
+			expectedOutput: `Version: v1.0.0
 Commit: def456
 Build Date: 2024-03-29
-`),
+`,
 		},
 	}
 
