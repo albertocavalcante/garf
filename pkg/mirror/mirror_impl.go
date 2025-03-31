@@ -1,6 +1,7 @@
 package mirror
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -158,7 +159,7 @@ func (m *DefaultMirror) handleDryRun(artifact *core.Artifact, opts *core.MirrorO
 			"mode":     opts.DryRunMode,
 		}).Info("Dry run: simulating upload")
 
-		return true
+		return false
 	}
 
 	return false
@@ -217,7 +218,43 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 		return nil
 	}
 
-	return m.uploadToDestinations(ctx, artifact, content, destinations)
+	// Buffer the content before concurrent uploads
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, content); err != nil {
+		return fmt.Errorf("failed to buffer content: %w", err)
+	}
+
+	// Create a new reader for each destination
+	readers := make([]io.Reader, len(destinations))
+	for i := range destinations {
+		readers[i] = bytes.NewReader(buf.Bytes())
+	}
+
+	var wg sync.WaitGroup
+
+	errChan := make(chan error, len(destinations))
+
+	for i, dest := range destinations {
+		wg.Add(1)
+
+		go func(d core.Destination, r io.Reader) {
+			defer wg.Done()
+
+			if err := d.Put(ctx, artifact, r); err != nil {
+				errChan <- fmt.Errorf("failed to upload to destination: %w", err)
+			}
+		}(dest, readers[i])
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	var lastErr error
+	for err := range errChan {
+		lastErr = err
+	}
+
+	return lastErr
 }
 
 // Mirror copies artifacts from sources to destinations.

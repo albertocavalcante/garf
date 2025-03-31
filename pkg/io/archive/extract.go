@@ -25,7 +25,6 @@ func HandleZipExtraction(params ZipExtractionParams) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create temporary directory: %w", err)
 	}
-	defer os.RemoveAll(tempDir)
 
 	extractOpts := ExtractOptions{
 		DestinationDir:       tempDir,
