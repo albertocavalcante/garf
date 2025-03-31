@@ -62,7 +62,8 @@ type unzipTestCase struct {
 }
 
 // runZipExtractionTest runs a single test case for zip extraction.
-func runZipExtractionTest(t *testing.T, test unzipTestCase, tempDir, extractDir string) {
+func runZipExtractionTest(t *testing.T, test unzipTestCase, tempDir string) {
+	t.Helper()
 	// Create a test zip file
 	zipPath := filepath.Join(tempDir, test.name+".zip")
 	createTestZip(t, zipPath, test.fileCount, test.includeDir)
@@ -141,7 +142,7 @@ func TestExtractSingleFileFromZip(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			runZipExtractionTest(t, test, tempDir, extractDir)
+			runZipExtractionTest(t, test, tempDir)
 		})
 	}
 }
@@ -166,8 +167,8 @@ func createTestZip(t *testing.T, zipPath string, fileCount int, includeDir bool)
 		require.NoError(t, err)
 	} else {
 		// Add regular files
-		for i := 0; i < fileCount; i++ {
-			fileName := filepath.Join("testfile" + ".txt")
+		for range make([]struct{}, fileCount) {
+			fileName := "testfile.txt"
 			file, err := zipWriter.Create(fileName)
 			require.NoError(t, err)
 
@@ -175,4 +176,8 @@ func createTestZip(t *testing.T, zipPath string, fileCount int, includeDir bool)
 			require.NoError(t, err)
 		}
 	}
+}
+
+func TestUnzipFile(t *testing.T) {
+	// Test implementation goes here
 }
