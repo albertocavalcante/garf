@@ -8,7 +8,9 @@ import (
 )
 
 // ReadPasswordFromStdin reads a password from stdin.
-// It trims any whitespace from the input.
+// ReadPasswordFromStdin reads a password from standard input by reading until a newline character is encountered.
+// It trims any leading or trailing whitespace from the input. If an error occurs during reading, it returns an empty string
+// and an error wrapping the original issue.
 func ReadPasswordFromStdin() (string, error) {
 	reader := bufio.NewReader(os.Stdin)
 

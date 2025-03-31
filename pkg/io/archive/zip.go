@@ -40,12 +40,13 @@ func (e *ZipError) Unwrap() error {
 	return e.Err
 }
 
-// IsZipFile checks if the given file path has a .zip extension.
+// IsZipFile returns true if the provided file path ends with the ".zip" extension (case-insensitive).
 func IsZipFile(path string) bool {
 	return strings.HasSuffix(strings.ToLower(path), ".zip")
 }
 
-// validateExtractOptions validates the provided extraction options.
+// validateExtractOptions checks the extraction options for ZIP archives.
+// Since no validations are required (e.g., the destination directory is optional), the function always returns nil.
 func validateExtractOptions() error {
 	// DestinationDir is optional, so no validation needed
 	return nil
@@ -112,7 +113,13 @@ func extractFileToDestination(zipFile *zip.File, destPath string) error {
 	return nil
 }
 
-// ExtractSingleFile extracts a single file from a ZIP archive.
+// ExtractSingleFile extracts a single file from the ZIP archive at zipPath.
+// 
+// It validates the extraction options and creates the destination directory (if specified).
+// The function opens the ZIP file, locates a single non-directory file within it, and
+// extracts that file to a destination path derived from options. If DestinationDir is provided,
+// the file is extracted into that directory; otherwise, the file retains its original name.
+// Returns the full path to the extracted file, or an error if any operation fails.
 func ExtractSingleFile(zipPath string, options ExtractOptions) (string, error) {
 	if err := validateExtractOptions(); err != nil {
 		return "", err

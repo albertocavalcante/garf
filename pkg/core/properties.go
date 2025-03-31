@@ -4,7 +4,9 @@ import "strings"
 
 const propertyKeyValueParts = 2
 
-// ParseProperties converts the properties array into a map.
+// ParseProperties converts a slice of "key=value" strings into a map of key-value pairs.
+// For each string, it splits at the first '=' character and trims any surrounding whitespace from both the key and value.
+// Strings that do not consist of exactly one '=' are ignored.
 func ParseProperties(props []string) map[string]string {
 	result := make(map[string]string)
 

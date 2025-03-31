@@ -14,7 +14,9 @@ type Reader struct {
 	progressFunc ProgressFunc
 }
 
-// - progressFunc: The function to call with progress updates.
+// NewReader creates a new progress-tracking Reader that wraps the provided io.Reader.
+// It uses the given total byte count to monitor progress and, if provided,
+// calls the progressFunc with updates that include the current progress and a descriptive message.
 func NewReader(reader io.Reader, total int64, progressFunc ProgressFunc) *Reader {
 	return &Reader{
 		reader:       reader,

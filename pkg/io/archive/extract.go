@@ -19,7 +19,7 @@ type ZipExtractionParams struct {
 	Opts     *core.MirrorOptions
 }
 
-// HandleZipExtraction handles the extraction of a zip file and returns the path to the extracted file.
+// HandleZipExtraction extracts the zip file located at the artifact's location into a temporary directory, preserving its original name. If extraction fails, the temporary directory is removed and an error is returned; otherwise, it returns the full path to the extracted file.
 func HandleZipExtraction(params ZipExtractionParams) (string, error) {
 	// Create temporary directory for extraction
 	tempDir, err := os.MkdirTemp("", "garf-unzip-*")
@@ -43,7 +43,11 @@ func HandleZipExtraction(params ZipExtractionParams) (string, error) {
 	return extractedPath, nil
 }
 
-// ProcessArtifact processes a single artifact, handling zip extraction if needed.
+// ProcessArtifact processes the provided artifact by conditionally extracting zip files before mirroring them.
+// 
+// If the artifact's location indicates a zip file, it extracts the file to a temporary directory using HandleZipExtraction,
+// then updates the artifact's name and location to point to the extracted file. Otherwise, it mirrors the artifact as is.
+// An error is returned if any extraction or mirroring step fails.
 func ProcessArtifact(
 	ctx context.Context,
 	logger *logrus.Logger,

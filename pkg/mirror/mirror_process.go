@@ -10,7 +10,9 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// SetupSource creates and configures a source based on the provided configuration.
+// SetupSource creates and configures a mirroring source based on the provided configuration.
+// It currently supports a GitHub source when the source type is "github" and returns an error if an unsupported
+// source type is specified or if the created source fails validation.
 func SetupSource(logger *logrus.Logger, config *config.Config) (core.Source, error) {
 	var source core.Source
 

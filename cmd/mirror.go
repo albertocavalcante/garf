@@ -105,7 +105,7 @@ func (f *MirrorFlags) addFlags(cmd *cobra.Command) {
 
 // ValidateAndGetConfig validates required flags and environment variables and returns a JFrog config.
 // Password priority: command-line flag > environment variable
-// The password can also be provided via stdin using the --jfrog-password-stdin flag.
+// ValidateAndGetConfig validates that both source and destination are provided, then constructs a JFrog configuration by prioritizing command-line flag values over environment variables for the JFrog URL, user, and password. It returns an error if any required value is missing. The password can also be provided via stdin using the --jfrog-password-stdin flag.
 func ValidateAndGetConfig(
 	source, destination, jfrogURL, jfrogUser, jfrogPassword string,
 ) (*destinations.JFrogConfig, error) {
@@ -181,7 +181,9 @@ func (f *MirrorFlags) setupDestination(m *mirror.DefaultMirror, logger *logrus.L
 	return nil
 }
 
-// createArtifact creates a new artifact from the given flags.
+// createArtifact creates a new core.Artifact based on the provided mirror flags.
+// It sets the artifact's name to the base of the source path (flags.Source) and parses any properties from flags.Properties into metadata.
+// If a file override is specified in flags.FromFile, it replaces the source as the artifact's location.
 func createArtifact(flags *MirrorFlags) *core.Artifact {
 	artifact := &core.Artifact{
 		Name:     filepath.Base(flags.Source),
@@ -217,7 +219,9 @@ type MirrorResultsParams struct {
 	opts     *core.MirrorOptions
 }
 
-// processMirrorResults processes the results from the mirror operation.
+// processMirrorResults processes mirror operation results by iterating over result items received from a channel.
+// It logs errors for any failed mirror attempts and, when the Unzip flag is enabled, processes artifacts using the processor package.
+// The function returns the last error encountered during processing, or nil if all results were handled successfully.
 func processMirrorResults(params MirrorResultsParams) error {
 	var lastErr error
 
@@ -375,7 +379,8 @@ func (f *MirrorFlags) prepareArtifact(ctx context.Context) (*core.Artifact, *cor
 	return artifact, opts
 }
 
-// readPasswordFromStdin reads a password from stdin.
+// readPasswordFromStdin reads a password from standard input without echoing the input,
+// returning the entered password and any error encountered during reading.
 func readPasswordFromStdin() (string, error) {
 	return io.ReadPasswordFromStdin()
 }
