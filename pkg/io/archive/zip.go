@@ -45,7 +45,7 @@ func IsZipFile(path string) bool {
 	return strings.HasSuffix(strings.ToLower(path), ".zip")
 }
 
-// ValidateExtractOptions checks the extraction options for ZIP archives.
+// validateExtractOptions checks the extraction options for ZIP archives.
 // Since no validations are required (e.g., the destination directory is optional), the function always returns nil.
 func validateExtractOptions() error {
 	// DestinationDir is optional, so no validation needed
