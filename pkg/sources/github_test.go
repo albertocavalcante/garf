@@ -8,22 +8,35 @@ import (
 
 	"github.com/albertocavalcante/garf/pkg/core"
 	"github.com/albertocavalcante/garf/pkg/sources"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
 
-func setupTestServer(t *testing.T) *httptest.Server {
+func setupTestServer() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check if the URL is a valid GitHub release URL
-		if r.URL.Path == "/example/repo/releases/download/v1.0.0/artifact.zip" {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("test content"))
-		} else {
-			w.WriteHeader(http.StatusNotFound)
+		_, err := w.Write([]byte("test content"))
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+
+			return
 		}
 	}))
 }
 
-func createTestSource(server *httptest.Server) *sources.GitHubSource {
+func createTestLogger() *logrus.Logger {
+	logger := logrus.New()
+	logger.SetLevel(logrus.DebugLevel)
+
+	return logger
+}
+
+func TestGitHubSourceValidate(t *testing.T) {
+	logger := createTestLogger()
+	source := sources.NewGitHubSource(logger)
+	require.NoError(t, source.Validate())
+}
+
+func createTestSource() *sources.GitHubSource {
 	source := sources.NewGitHubSource(nil)
 	source.SetClient(&http.Client{})
 
@@ -31,7 +44,7 @@ func createTestSource(server *httptest.Server) *sources.GitHubSource {
 }
 
 func TestGitHubSource(t *testing.T) {
-	server := setupTestServer(t)
+	server := setupTestServer()
 	defer server.Close()
 
 	tests := []struct {
@@ -60,7 +73,7 @@ func TestGitHubSource(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			source := createTestSource(server)
+			source := createTestSource()
 
 			// Create a test artifact to validate the URL
 			artifact := &core.Artifact{
@@ -84,7 +97,7 @@ func TestGitHubSource(t *testing.T) {
 }
 
 func TestGitHubSourceGet(t *testing.T) {
-	server := setupTestServer(t)
+	server := setupTestServer()
 	defer server.Close()
 
 	tests := []struct {
@@ -121,7 +134,7 @@ func TestGitHubSourceGet(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			source := createTestSource(server)
+			source := createTestSource()
 
 			content, err := source.Get(context.Background(), tt.artifact)
 			if tt.validateError {
