@@ -165,41 +165,6 @@ func (m *DefaultMirror) handleDryRun(artifact *core.Artifact, opts *core.MirrorO
 	return false
 }
 
-func (m *DefaultMirror) uploadToDestinations(
-	ctx context.Context,
-	artifact *core.Artifact,
-	content io.Reader,
-	destinations []core.Destination,
-) error {
-	var wg sync.WaitGroup
-
-	errChan := make(chan error, len(destinations))
-
-	for _, dest := range destinations {
-		wg.Add(1)
-
-		go func(d core.Destination) {
-			defer wg.Done()
-
-			if err := d.Put(ctx, artifact, content); err != nil {
-				errChan <- fmt.Errorf("failed to upload to destination: %w", err)
-
-				return
-			}
-		}(dest)
-	}
-
-	wg.Wait()
-	close(errChan)
-
-	var lastErr error
-	for err := range errChan {
-		lastErr = err
-	}
-
-	return lastErr
-}
-
 func (m *DefaultMirror) downloadAndUploadArtifact(
 	ctx context.Context,
 	artifact *core.Artifact,

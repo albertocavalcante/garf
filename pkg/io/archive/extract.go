@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/albertocavalcante/garf/pkg/core"
 	"github.com/albertocavalcante/garf/pkg/mirror"
@@ -33,6 +34,9 @@ func HandleZipExtraction(params ZipExtractionParams) (string, error) {
 
 	extractedPath, err := ExtractSingleFile(params.Artifact.Location, extractOpts)
 	if err != nil {
+		// Clean up the temporary directory if extraction fails
+		os.RemoveAll(tempDir)
+
 		return "", fmt.Errorf("failed to extract zip: %w", err)
 	}
 
@@ -61,7 +65,7 @@ func ProcessArtifact(
 		}
 
 		// Update the artifact name and location for the extracted file
-		artifact.Name = extractedPath
+		artifact.Name = filepath.Base(extractedPath)
 		artifact.Location = extractedPath
 
 		// Mirror the extracted file
