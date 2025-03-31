@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "processor",
+    srcs = ["artifact.go"],
+    importpath = "github.com/albertocavalcante/garf/pkg/processor",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/core",
+        "//pkg/io/archive",
+        "//pkg/mirror",
+        "@com_github_sirupsen_logrus//:logrus",
+    ],
+)
