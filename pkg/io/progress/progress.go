@@ -3,7 +3,7 @@ package progress
 
 import "io"
 
-// ProgressFunc is a function that is called to report progress.
+// - message: A descriptive message about the current operation.
 type ProgressFunc func(current, total int64, message string)
 
 // Reader wraps an io.Reader to track progress.
@@ -14,7 +14,9 @@ type Reader struct {
 	progressFunc ProgressFunc
 }
 
-// NewReader creates a new progress reader.
+// NewReader creates a new progress-tracking Reader that wraps the provided io.Reader.
+// It uses the given total byte count to monitor progress and, if provided,
+// calls the progressFunc with updates that include the current progress and a descriptive message.
 func NewReader(reader io.Reader, total int64, progressFunc ProgressFunc) *Reader {
 	return &Reader{
 		reader:       reader,

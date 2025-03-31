@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/albertocavalcante/garf/pkg/config"
+	"github.com/albertocavalcante/garf/pkg/core/config"
 	"github.com/stretchr/testify/require"
 )
 

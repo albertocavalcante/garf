@@ -1,145 +1,18 @@
 package mirror
 
 import (
-	"context"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"strings"
-	"sync"
 
-	"github.com/albertocavalcante/garf/pkg/archive"
-	"github.com/albertocavalcante/garf/pkg/config"
 	"github.com/albertocavalcante/garf/pkg/core"
+	"github.com/albertocavalcante/garf/pkg/core/config"
 	"github.com/albertocavalcante/garf/pkg/destinations"
 	"github.com/albertocavalcante/garf/pkg/sources"
 	"github.com/sirupsen/logrus"
 )
 
-// downloadArtifact downloads an artifact from the source and saves it to a temporary file.
-func downloadArtifact(
-	ctx context.Context,
-	source core.Source,
-	artifact *core.Artifact,
-	tmpDir string,
-) (string, io.ReadCloser, error) {
-	content, err := source.Get(ctx, artifact)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to get artifact: %w", err)
-	}
-
-	// Create a temporary file for the artifact
-	tmpFile := filepath.Join(tmpDir, filepath.Base(artifact.Location))
-
-	file, err := os.Create(tmpFile)
-	if err != nil {
-		content.Close()
-
-		return "", nil, fmt.Errorf("failed to create temp file: %w", err)
-	}
-
-	// Copy the content to the temporary file
-	if _, err := io.Copy(file, content); err != nil {
-		file.Close()
-		content.Close()
-
-		return "", nil, fmt.Errorf("failed to copy artifact content: %w", err)
-	}
-
-	file.Close()
-
-	return tmpFile, content, nil
-}
-
-// processZipArtifact processes a zip artifact if needed.
-func processZipArtifact(artifact *core.Artifact, tmpFile string, tmpDir string) error {
-	if !strings.HasSuffix(artifact.Location, ".zip") {
-		return nil
-	}
-
-	options := archive.ExtractOptions{
-		DestinationDir:       tmpDir,
-		PreserveOriginalName: true,
-	}
-	if _, err := archive.ExtractSingleFile(tmpFile, options); err != nil {
-		return fmt.Errorf("failed to unzip artifact: %w", err)
-	}
-
-	return nil
-}
-
-// uploadToDestinations uploads the artifact to all configured destinations.
-func uploadToDestinations(
-	ctx context.Context,
-	artifact *core.Artifact,
-	content io.Reader,
-	destinations []core.Destination,
-) error {
-	var wg sync.WaitGroup
-
-	errChan := make(chan error, len(destinations))
-
-	for _, dest := range destinations {
-		wg.Add(1)
-
-		go func(d core.Destination) {
-			defer wg.Done()
-
-			if err := d.Put(ctx, artifact, content); err != nil {
-				errChan <- fmt.Errorf("failed to upload to destination: %w", err)
-
-				return
-			}
-		}(dest)
-	}
-
-	// Wait for all uploads to complete
-	wg.Wait()
-	close(errChan)
-
-	// Collect any errors
-	var lastErr error
-	for err := range errChan {
-		lastErr = err
-	}
-
-	return lastErr
-}
-
-// ProcessAndUploadArtifact processes and uploads an artifact to all configured destinations.
-func ProcessAndUploadArtifact(
-	ctx context.Context,
-	logger *logrus.Logger,
-	artifact *core.Artifact,
-	source core.Source,
-	destinations []core.Destination,
-	opts *core.MirrorOptions,
-) error {
-	// Create a temporary directory for processing
-	tmpDir, err := os.MkdirTemp("", "garf-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temp directory: %w", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	// Download the artifact
-	tmpFile, content, err := downloadArtifact(ctx, source, artifact, tmpDir)
-	if err != nil {
-		return err
-	}
-	defer content.Close()
-
-	// Process the artifact if it's a zip file
-	if err := processZipArtifact(artifact, tmpFile, tmpDir); err != nil {
-		return err
-	}
-
-	// Upload to all destinations
-	return uploadToDestinations(ctx, artifact, content, destinations)
-}
-
-// SetupSource creates and configures a source based on the provided configuration.
+// SetupSource creates and configures a mirroring source based on the provided configuration.
+// It currently supports a GitHub source when the source type is "github" and returns an error if an unsupported
+// source type is specified or if the created source fails validation.
 func SetupSource(logger *logrus.Logger, config *config.Config) (core.Source, error) {
 	var source core.Source
 

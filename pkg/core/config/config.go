@@ -1,3 +1,4 @@
+// Package config provides configuration management functionality.
 package config
 
 import (
@@ -8,7 +9,7 @@ import (
 	"os"
 
 	"github.com/albertocavalcante/garf/pkg/core"
-	"gopkg.in/yaml.v3"
+	yaml "gopkg.in/yaml.v3"
 )
 
 // Artifact is an alias for core.Artifact.

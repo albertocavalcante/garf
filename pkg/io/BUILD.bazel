@@ -1,0 +1,8 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "io",
+    srcs = ["password.go"],
+    importpath = "github.com/albertocavalcante/garf/pkg/io",
+    visibility = ["//visibility:public"],
+)

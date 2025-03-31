@@ -10,9 +10,8 @@ go_library(
     importpath = "github.com/albertocavalcante/garf/pkg/mirror",
     visibility = ["//visibility:public"],
     deps = [
-        "//pkg/archive",
-        "//pkg/config",
         "//pkg/core",
+        "//pkg/core/config",
         "//pkg/destinations",
         "//pkg/sources",
         "@com_github_sirupsen_logrus//:logrus",

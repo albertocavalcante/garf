@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/albertocavalcante/garf/pkg/core"
-	"github.com/albertocavalcante/garf/pkg/progress"
+	"github.com/albertocavalcante/garf/pkg/io/progress"
 	"github.com/jfrog/jfrog-client-go/artifactory"
 	"github.com/jfrog/jfrog-client-go/artifactory/auth"
 	"github.com/jfrog/jfrog-client-go/artifactory/services"
@@ -32,7 +32,10 @@ type JFrogClient struct {
 	artifactory.ArtifactoryServicesManager
 }
 
-// NewJFrogClient creates a new JFrogClient (ArtifactoryServicesManager).
+// NewJFrogClient creates a new JFrogClient using the provided configuration.
+// It sets up the Artifactory connection details, builds the required service configuration,
+// and initializes the underlying ArtifactoryServicesManager.
+// If initialization fails at any step, an error is returned.
 func NewJFrogClient(jc *JFrogConfig) (*JFrogClient, error) {
 	// Create Artifactory details
 	rtDetails := auth.NewArtifactoryDetails()
@@ -55,10 +58,12 @@ func NewJFrogClient(jc *JFrogConfig) (*JFrogClient, error) {
 	return &JFrogClient{rtManager}, nil
 }
 
-// setupProgressReader creates a progress reader if needed.
-func setupProgressReader(content io.Reader, progressFunc progress.ProgressFunc) (io.Reader, error) {
+// setupProgressReader returns an io.Reader that wraps the provided content to report progress during read operations.
+// If the progress function is nil, the original reader is returned unchanged.
+// When the reader supports seeking, it attempts to determine the total content size to enable accurate progress reporting.
+func setupProgressReader(content io.Reader, progressFunc progress.ProgressFunc) io.Reader {
 	if progressFunc == nil {
-		return content, nil
+		return content
 	}
 
 	// Get the total size if available
@@ -78,7 +83,7 @@ func setupProgressReader(content io.Reader, progressFunc progress.ProgressFunc) 
 	}
 
 	// Create progress reader
-	return progress.NewReader(content, total, progressFunc), nil
+	return progress.NewReader(content, total, progressFunc)
 }
 
 // UploadGenericArtifact uploads a generic artifact to Artifactory.
@@ -98,11 +103,7 @@ func (c *JFrogClient) UploadGenericArtifact(
 
 	// Setup progress reader if needed
 	if progressFunc != nil {
-		reader, err := setupProgressReader(content, progressFunc)
-		if err != nil {
-			return err
-		}
-
+		reader := setupProgressReader(content, progressFunc)
 		content = reader
 	}
 
@@ -136,7 +137,7 @@ func (c *JFrogClient) UploadGenericArtifact(
 	}
 
 	// Upload the artifact
-	_, totalFailed, err := c.ArtifactoryServicesManager.UploadFiles(artifactory.UploadServiceOptions{}, params)
+	_, totalFailed, err := c.UploadFiles(artifactory.UploadServiceOptions{}, params)
 	if err != nil {
 		return fmt.Errorf("failed to upload artifact: %v", err)
 	}

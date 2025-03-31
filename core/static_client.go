@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/albertocavalcante/garf/pkg/progress"
+	"github.com/albertocavalcante/garf/pkg/io/progress"
 )
 
 // DownloadArtifact downloads a GitHub Release artifact to a temporary directory.

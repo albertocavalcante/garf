@@ -1,13 +1,15 @@
 package mirror
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"runtime"
 	"sync"
 
-	"github.com/albertocavalcante/garf/pkg/config"
 	"github.com/albertocavalcante/garf/pkg/core"
+	"github.com/albertocavalcante/garf/pkg/core/config"
 	"github.com/sirupsen/logrus"
 )
 
@@ -120,16 +122,13 @@ func (m *DefaultMirror) validateArtifact(artifact *core.Artifact) error {
 	return nil
 }
 
-func (m *DefaultMirror) downloadAndUploadArtifact(
-	ctx context.Context,
-	artifact *core.Artifact,
-	opts *core.MirrorOptions,
-	result *MirrorResult,
-) error {
+func (m *DefaultMirror) getSourceAndDestinations() (core.Source, []core.Destination) {
 	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	var source core.Source
 
-	var destination core.Destination
+	destinations := make([]core.Destination, 0, len(m.destinations))
 
 	for _, s := range m.sources {
 		source = s
@@ -138,18 +137,13 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 	}
 
 	for _, d := range m.destinations {
-		destination = d
-
-		break
+		destinations = append(destinations, d)
 	}
-	m.mu.RUnlock()
 
-	content, err := source.Get(ctx, artifact)
-	if err != nil {
-		return fmt.Errorf("failed to get artifact: %w", err)
-	}
-	defer content.Close()
+	return source, destinations
+}
 
+func (m *DefaultMirror) handleDryRun(artifact *core.Artifact, opts *core.MirrorOptions) bool {
 	if opts != nil && opts.DryRun {
 		if opts.DryRunMode == "all" {
 			m.logger.WithFields(logrus.Fields{
@@ -157,7 +151,7 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 				"mode":     opts.DryRunMode,
 			}).Info("Dry run: skipping upload")
 
-			return nil
+			return true
 		}
 
 		m.logger.WithFields(logrus.Fields{
@@ -165,14 +159,67 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 			"mode":     opts.DryRunMode,
 		}).Info("Dry run: simulating upload")
 
+		return false
+	}
+
+	return false
+}
+
+func (m *DefaultMirror) downloadAndUploadArtifact(
+	ctx context.Context,
+	artifact *core.Artifact,
+	opts *core.MirrorOptions,
+	_ *MirrorResult,
+) error {
+	source, destinations := m.getSourceAndDestinations()
+
+	content, err := source.Get(ctx, artifact)
+	if err != nil {
+		return fmt.Errorf("failed to get artifact: %w", err)
+	}
+	defer content.Close()
+
+	if m.handleDryRun(artifact, opts) {
 		return nil
 	}
 
-	if err := destination.Put(ctx, artifact, content); err != nil {
-		return fmt.Errorf("failed to put artifact: %w", err)
+	// Buffer the content before concurrent uploads
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, content); err != nil {
+		return fmt.Errorf("failed to buffer content: %w", err)
 	}
 
-	return nil
+	// Create a new reader for each destination
+	readers := make([]io.Reader, len(destinations))
+	for i := range destinations {
+		readers[i] = bytes.NewReader(buf.Bytes())
+	}
+
+	var wg sync.WaitGroup
+
+	errChan := make(chan error, len(destinations))
+
+	for i, dest := range destinations {
+		wg.Add(1)
+
+		go func(d core.Destination, r io.Reader) {
+			defer wg.Done()
+
+			if err := d.Put(ctx, artifact, r); err != nil {
+				errChan <- fmt.Errorf("failed to upload to destination: %w", err)
+			}
+		}(dest, readers[i])
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	var lastErr error
+	for err := range errChan {
+		lastErr = err
+	}
+
+	return lastErr
 }
 
 // Mirror copies artifacts from sources to destinations.
@@ -205,7 +252,7 @@ func (m *DefaultMirror) Mirror(
 	}
 
 	// Start workers
-	for i := 0; i < numWorkers; i++ {
+	for range make([]struct{}, numWorkers) {
 		wg.Add(1)
 
 		go func() {

@@ -1,0 +1,16 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "archive",
+    srcs = [
+        "extract.go",
+        "zip.go",
+    ],
+    importpath = "github.com/albertocavalcante/garf/pkg/io/archive",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/core",
+        "//pkg/mirror",
+        "@com_github_sirupsen_logrus//:logrus",
+    ],
+)

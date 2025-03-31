@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "interfaces.go",
         "options.go",
+        "properties.go",
     ],
     importpath = "github.com/albertocavalcante/garf/pkg/core",
     visibility = ["//visibility:public"],
@@ -13,7 +14,10 @@ go_library(
 go_test(
     name = "core_test",
     size = "small",
-    srcs = ["core_test.go"],
+    srcs = [
+        "core_test.go",
+        "properties_test.go",
+    ],
     deps = [
         ":core",
         "@com_github_stretchr_testify//require",
