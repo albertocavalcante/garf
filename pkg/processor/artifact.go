@@ -12,7 +12,10 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// ProcessArtifact processes an artifact based on its type.
+// ProcessArtifact processes an artifact using an appropriate mirroring strategy.
+// It checks if the artifact is a zip file by inspecting its location; if so, it extracts
+// the contents using handleZipExtraction and mirrors the resulting file, otherwise,
+// it mirrors the artifact directly. Any error encountered during extraction or mirroring is returned.
 func ProcessArtifact(
 	ctx context.Context,
 	_ *logrus.Logger, // Unused for now, may be used for future logging
@@ -39,7 +42,9 @@ func ProcessArtifact(
 	return nil
 }
 
-// handleZipExtraction handles the extraction of a zip file and mirrors the extracted content.
+// handleZipExtraction extracts the zip file located at the artifact's Location into its parent directory while preserving the original file name.
+// It updates the artifact's Name and Location to correspond to the extracted file and then mirrors the file using the provided mirror instance.
+// Returns an error if either extraction or mirroring fails.
 func handleZipExtraction(
 	ctx context.Context,
 	mirror *mirror.DefaultMirror,

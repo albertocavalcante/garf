@@ -6,7 +6,11 @@ import (
 )
 
 // SetupProgressReader creates a progress reader if needed.
-// It attempts to determine the total size if the reader supports seeking.
+// SetupProgressReader creates a progress-aware reader that wraps the provided io.Reader.
+// It returns an error if the input reader is nil, and if the progress function is nil,
+// the original reader is returned unmodified.
+// If the reader supports seeking (io.Seeker), it determines the total size of the content
+// by seeking to the end and then restoring the original position before wrapping it with NewReader.
 func SetupProgressReader(content io.Reader, progressFunc ProgressFunc) (io.Reader, error) {
 	if content == nil {
 		return nil, fmt.Errorf("content reader is nil")
