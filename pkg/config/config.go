@@ -60,7 +60,7 @@ type Destination interface {
 	Validate() error
 }
 
-// Load loads configuration from a file.
+// Load reads a YAML configuration file from the specified filename and unmarshals its content into a Config struct. It returns a pointer to the configuration upon success or an error if the file cannot be read or parsed.
 func Load(filename string) (*Config, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {

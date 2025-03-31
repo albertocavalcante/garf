@@ -14,7 +14,9 @@ type Reader struct {
 	progressFunc ProgressFunc
 }
 
-// NewReader creates a new progress reader.
+// NewReader returns a new Reader that wraps the provided io.Reader with progress tracking.
+// It sets the total number of bytes expected to be read and assigns the provided progress function
+// (if non-nil) to report progress during read operations.
 func NewReader(reader io.Reader, total int64, progressFunc ProgressFunc) *Reader {
 	return &Reader{
 		reader:       reader,

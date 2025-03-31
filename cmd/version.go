@@ -15,7 +15,8 @@ var CommitHash = "unknown"
 // BuildDate is the date the binary was built.
 var BuildDate = "unknown"
 
-// NewVersionCmd creates the version command for the CLI.
+// NewVersionCmd returns a new Cobra command configured to display the CLI's version information.
+// When executed, the command prints the version number, git commit hash, and build date to the standard output.
 func NewVersionCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "version",

@@ -54,13 +54,14 @@ func IsZipFile(path string) bool {
 	return strings.HasSuffix(strings.ToLower(path), ".zip")
 }
 
-// validateExtractOptions validates the provided extraction options.
+// validateExtractOptions checks the provided extraction options and returns an error if they are invalid.
+// Currently, no validation is performed since the DestinationDir option is optional.
 func validateExtractOptions(options ExtractOptions) error {
 	// DestinationDir is optional, so no validation needed
 	return nil
 }
 
-// createDestinationDir creates the destination directory if it doesn't exist.
+// createDestinationDir creates the destination directory specified by destDir using the default permission mode. It returns a ZipError if the directory cannot be created, or nil if the directory exists or is successfully created.
 func createDestinationDir(destDir string) error {
 	if err := os.MkdirAll(destDir, DefaultDirMode); err != nil {
 		return &ZipError{Op: "create_dest_dir", Err: fmt.Errorf("failed to create destination directory: %w", err)}
@@ -69,7 +70,10 @@ func createDestinationDir(destDir string) error {
 	return nil
 }
 
-// findSingleFileInZip finds the first non-directory file in the ZIP archive.
+// findSingleFileInZip returns the single non-directory file from the provided ZIP archive.
+// It iterates through the archive's entries and ensures that exactly one regular file is present.
+// If multiple non-directory files are found, or if no non-directory file exists (even if directories are present),
+// it returns a ZipError describing the encountered issue.
 func findSingleFileInZip(r *zip.Reader) (*zip.File, error) {
 	var singleFile *zip.File
 
@@ -100,7 +104,9 @@ func findSingleFileInZip(r *zip.Reader) (*zip.File, error) {
 	return singleFile, nil
 }
 
-// extractFileToDestination extracts a single file from the ZIP archive to the destination.
+// extractFileToDestination extracts the contents of a ZIP archive entry to the specified destination path.
+// It opens the file from the archive, creates the destination file, and copies its data.
+// If any step fails, it returns a ZipError that wraps the underlying error.
 func extractFileToDestination(zipFile *zip.File, destPath string) error {
 	rc, err := zipFile.Open()
 	if err != nil {
@@ -121,7 +127,12 @@ func extractFileToDestination(zipFile *zip.File, destPath string) error {
 	return nil
 }
 
-// ExtractSingleFile extracts a single file from a ZIP archive.
+// ExtractSingleFile extracts a single non-directory file from the specified ZIP archive.
+// It validates the extraction options and creates the destination directory if one is provided.
+// The function opens the ZIP file at zipPath, locates the sole file eligible for extraction,
+// determines its destination path (using the file's original name, optionally joined with the destination directory),
+// and extracts the file to that location.
+// It returns the destination path if successful or an error if any step fails.
 func ExtractSingleFile(zipPath string, options ExtractOptions) (string, error) {
 	if err := validateExtractOptions(options); err != nil {
 		return "", err

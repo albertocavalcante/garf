@@ -21,7 +21,8 @@ type GitHubSource struct {
 	tempDir string
 }
 
-// NewGitHubSource creates a new GitHubSource instance.
+// NewGitHubSource returns a new GitHubSource instance with a default HTTP client.
+// It uses the provided logger for logging; if the logger is nil, a new logger instance is created.
 func NewGitHubSource(logger *logrus.Logger) *GitHubSource {
 	if logger == nil {
 		logger = logrus.New()
@@ -38,7 +39,9 @@ func (s *GitHubSource) List(ctx context.Context) ([]*core.Artifact, error) {
 	return nil, fmt.Errorf("listing artifacts from GitHub is not supported, use specific release URLs")
 }
 
-// validateGitHubURL validates that the given URL is a GitHub URL.
+// validateGitHubURL verifies that the given URL string is correctly formatted and corresponds to a GitHub URL.
+// It returns an error if the URL cannot be parsed or if its host does not include "github.com", except when the host
+// is a localhost address (e.g. "127.0.0.1" or "localhost"), which is permitted for testing purposes.
 func validateGitHubURL(location string) error {
 	parsedURL, err := url.Parse(location)
 	if err != nil {
@@ -73,7 +76,10 @@ func (s *GitHubSource) ensureTempDir() error {
 	return nil
 }
 
-// createGitHubRequest creates an HTTP request for downloading from GitHub.
+// createGitHubRequest constructs an HTTP GET request for downloading a resource from a GitHub URL.
+// It sets the "Accept" header to "application/octet-stream" to indicate binary data, and if a GitHub token is available
+// via the GITHUB_TOKEN environment variable, it adds an "Authorization" header using that token.
+// The provided context is used for request cancellation and timeouts.
 func createGitHubRequest(ctx context.Context, location string) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, location, nil)
 	if err != nil {

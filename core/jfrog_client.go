@@ -32,7 +32,10 @@ type JFrogClient struct {
 	artifactory.ArtifactoryServicesManager
 }
 
-// NewJFrogClient creates a new JFrogClient (ArtifactoryServicesManager).
+// NewJFrogClient creates and returns a new JFrogClient configured for Artifactory interactions.
+// It constructs connection details from the provided JFrogConfig (URL, user, and password),
+// builds the corresponding service configuration, and initializes the underlying ArtifactoryServicesManager.
+// The function returns the initialized client, or an error if any step of the initialization process fails.
 func NewJFrogClient(jc *JFrogConfig) (*JFrogClient, error) {
 	// Create Artifactory details
 	rtDetails := auth.NewArtifactoryDetails()
@@ -55,7 +58,10 @@ func NewJFrogClient(jc *JFrogConfig) (*JFrogClient, error) {
 	return &JFrogClient{rtManager}, nil
 }
 
-// setupProgressReader creates a progress reader if needed.
+// SetupProgressReader returns a reader that tracks read progress using the provided callback.
+// If no progress function is supplied, the original reader is returned unchanged.
+// When the underlying reader supports seeking, it attempts to determine the total size
+// of the content to enable more accurate progress reporting.
 func setupProgressReader(content io.Reader, progressFunc progress.ProgressFunc) (io.Reader, error) {
 	if progressFunc == nil {
 		return content, nil
