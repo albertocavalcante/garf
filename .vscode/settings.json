@@ -31,5 +31,9 @@
     "go.lintFlags": [
         "--fast",
         "--allow-parallel-runners"
-    ]
+    ],
+    "sonarlint.connectedMode.project": {
+        "connectionId": "albertocavalcante",
+        "projectKey": "albertocavalcante_garf"
+    }
 }
