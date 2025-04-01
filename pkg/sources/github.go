@@ -14,6 +14,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	// GitHubHost is the standard GitHub hostname.
+	GitHubHost = "github.com"
+)
+
 // GitHubSource implements core.Source for GitHub releases.
 type GitHubSource struct {
 	client  *http.Client
@@ -50,7 +55,7 @@ func validateGitHubURL(location string) error {
 		return nil
 	}
 
-	if !strings.Contains(parsedURL.Host, "github.com") {
+	if !strings.Contains(parsedURL.Host, GitHubHost) {
 		return fmt.Errorf("not a GitHub URL: %s", location)
 	}
 

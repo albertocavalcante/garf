@@ -3,6 +3,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "urlprocessor",
     srcs = [
+        "constants.go",
         "github.go",
         "processor.go",
         "registry.go",
