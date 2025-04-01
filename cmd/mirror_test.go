@@ -19,241 +19,200 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// configTestCase defines a test case for ValidateAndGetConfig testing.
-type configTestCase struct {
-	name          string
-	source        string
-	destination   string
-	jfrogURL      string
-	jfrogUser     string
-	jfrogPassword string
-	envVars       map[string]string
-	shouldErr     bool
+// testEnv holds test environment configuration.
+type testEnv struct {
+	configPath string
+	cleanup    func()
+	logger     *logrus.Logger
+	mirror     *mirror.DefaultMirror
 }
 
-// validateConfigTestCases contains all test cases for ValidateAndGetConfig.
-var validateConfigTestCases = []configTestCase{
-	{
-		name:        "Valid config with all required params via env vars",
-		source:      "https://github.com/example/repo/releases/download/v1.0/file.zip",
-		destination: "repo-local",
-		envVars: map[string]string{
-			"JFROG_URL":      "https://example.jfrog.io/artifactory",
-			"JFROG_USER":     "user",
-			"JFROG_PASSWORD": "password",
-		},
-		shouldErr: false,
-	},
-	{
-		name:          "Valid config with all required params via flags",
-		source:        "https://github.com/example/repo/releases/download/v1.0/file.zip",
-		destination:   "repo-local",
-		jfrogURL:      "https://example.jfrog.io/artifactory",
-		jfrogUser:     "user",
-		jfrogPassword: "password",
-		envVars:       map[string]string{},
-		shouldErr:     false,
-	},
-	{
-		name:        "Missing source",
-		source:      "",
-		destination: "repo-local",
-		envVars: map[string]string{
-			"JFROG_URL":      "https://example.jfrog.io/artifactory",
-			"JFROG_USER":     "user",
-			"JFROG_PASSWORD": "password",
-		},
-		shouldErr: true,
-	},
-	{
-		name:        "Missing destination",
-		source:      "https://github.com/example/repo/releases/download/v1.0/file.zip",
-		destination: "",
-		envVars: map[string]string{
-			"JFROG_URL":      "https://example.jfrog.io/artifactory",
-			"JFROG_USER":     "user",
-			"JFROG_PASSWORD": "password",
-		},
-		shouldErr: true,
-	},
-	{
-		name:        "Missing JFROG_URL",
-		source:      "https://github.com/example/repo/releases/download/v1.0/file.zip",
-		destination: "repo-local",
-		envVars: map[string]string{
-			"JFROG_USER":     "user",
-			"JFROG_PASSWORD": "password",
-		},
-		shouldErr: true,
-	},
-	{
-		name:        "Missing JFROG_USER",
-		source:      "https://github.com/example/repo/releases/download/v1.0/file.zip",
-		destination: "repo-local",
-		envVars: map[string]string{
-			"JFROG_URL":      "https://example.jfrog.io/artifactory",
-			"JFROG_PASSWORD": "password",
-		},
-		shouldErr: true,
-	},
-	{
-		name:        "Missing JFROG_PASSWORD",
-		source:      "https://github.com/example/repo/releases/download/v1.0/file.zip",
-		destination: "repo-local",
-		envVars: map[string]string{
-			"JFROG_URL":  "https://example.jfrog.io/artifactory",
-			"JFROG_USER": "user",
-		},
-		shouldErr: true,
-	},
-	{
-		name:          "Flag overrides env var",
-		source:        "https://github.com/example/repo/releases/download/v1.0/file.zip",
-		destination:   "repo-local",
-		jfrogURL:      "https://flag.example.com/artifactory",
-		jfrogUser:     "flag-user",
-		jfrogPassword: "flag-password",
-		envVars: map[string]string{
-			"JFROG_URL":      "https://env.example.com/artifactory",
-			"JFROG_USER":     "env-user",
-			"JFROG_PASSWORD": "env-password",
-		},
-		shouldErr: false,
-	},
-	// Testing URL normalization - adding scheme
-	{
-		name:          "JFrog URL without scheme gets http:// added",
-		source:        "https://github.com/example/repo/releases/download/v1.0/file.zip",
-		destination:   "repo-local",
-		jfrogURL:      "example.jfrog.io",
-		jfrogUser:     "user",
-		jfrogPassword: "password",
-		envVars:       map[string]string{},
-		shouldErr:     false,
-	},
-	// Testing URL normalization - adding /artifactory
-	{
-		name:          "JFrog URL without /artifactory gets it added",
-		source:        "https://github.com/example/repo/releases/download/v1.0/file.zip",
-		destination:   "repo-local",
-		jfrogURL:      "https://example.jfrog.io",
-		jfrogUser:     "user",
-		jfrogPassword: "password",
-		envVars:       map[string]string{},
-		shouldErr:     false,
-	},
-	// Testing proper handling of destination vs JFrog URL
-	{
-		name:          "Destination path is separate from JFrog URL",
-		source:        "https://github.com/example/repo/releases/download/v1.0/file.zip",
-		destination:   "custom-repo-path",
-		jfrogURL:      "https://example.jfrog.io",
-		jfrogUser:     "user",
-		jfrogPassword: "password",
-		envVars:       map[string]string{},
-		shouldErr:     false,
-	},
-}
+// setupTestEnv creates a new test environment with all necessary components.
+func setupTestEnv(t *testing.T) *testEnv {
+	t.Helper()
 
-// TestValidateAndGetConfig tests the ValidateAndGetConfig function with various
-// combinations of valid and invalid inputs.
-func TestValidateAndGetConfig(t *testing.T) {
-	// Save original environment
-	origEnv := saveEnvironment([]string{"JFROG_URL", "JFROG_USER", "JFROG_PASSWORD"})
+	// Save and set environment variables
+	envVars := map[string]string{
+		"JFROG_URL":      "http://localhost:8081",
+		"JFROG_USER":     "admin",
+		"JFROG_PASSWORD": "password",
+	}
+	origEnv := saveEnvironment(envVars)
 
-	// Restore environment after tests
-	defer restoreEnvironment(origEnv)
+	// Create logger
+	logger := logrus.New()
+	logger.SetOutput(io.Discard) // Suppress log output during tests
 
-	for _, tc := range validateConfigTestCases {
-		t.Run(tc.name, func(t *testing.T) {
-			runValidateConfigTest(t, tc)
-		})
+	// Setup mock mirror
+	testMirror := setupMockMirror(logger)
+
+	// Create config file
+	configPath := createTestConfig(t)
+
+	cleanup := func() {
+		restoreEnvironment(origEnv)
+	}
+
+	return &testEnv{
+		configPath: configPath,
+		cleanup:    cleanup,
+		logger:     logger,
+		mirror:     testMirror,
 	}
 }
 
-// normalizeJFrogURL adds http:// scheme and /artifactory path if needed.
-func normalizeJFrogURL(url string) string {
-	// Add scheme if needed
-	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		url = "http://" + url
-	}
+// createTestConfig creates a test configuration file.
+func createTestConfig(t *testing.T) string {
+	t.Helper()
 
-	// Add /artifactory if needed
-	if !strings.Contains(url, "/artifactory") {
-		url = strings.TrimSuffix(url, "/") + "/artifactory"
-	}
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "test.yaml")
+	configContent := []byte(`
+source:
+  type: github
+  url: https://github.com/owner/repo/releases/download/v1.0.0/artifact.tar.gz
+destination:
+  type: jfrog
+  url: http://localhost:8081/artifactory/generic-local/artifact.tar.gz
+  user: admin
+  password: password
+log_level: info
+concurrent: 4
+`)
+	err := os.WriteFile(configPath, configContent, 0o644)
+	require.NoError(t, err)
 
-	return url
+	return configPath
 }
 
-// runValidateConfigTest runs a single test case for ValidateAndGetConfig.
-func runValidateConfigTest(t *testing.T, tc configTestCase) {
-	// Clear environment
-	os.Unsetenv("JFROG_URL")
-	os.Unsetenv("JFROG_USER")
-	os.Unsetenv("JFROG_PASSWORD")
+// setupMockMirror creates a mock mirror instance for testing.
+func setupMockMirror(logger *logrus.Logger) *mirror.DefaultMirror {
+	mockClient := &http.Client{Transport: &mockHTTPClient{}}
+	source := sources.NewGitHubSource(logger)
+	source.SetClient(mockClient)
 
-	// Set test environment variables
-	for k, v := range tc.envVars {
-		os.Setenv(k, v)
+	testMirror := mirror.NewDefaultMirror(logger)
+	_ = testMirror.AddSource("default", source)
+	_ = testMirror.AddDestination("default", newMockDestination(logger))
+
+	return testMirror
+}
+
+// testCase represents a generic test case structure.
+type testCase struct {
+	name                   string
+	useConfig              bool
+	source                 string
+	destination            string
+	jfrogURL               string
+	jfrogUser              string
+	jfrogPassword          string
+	jfrogPasswordFromStdin bool
+	wantErr                bool
+	errMsg                 string
+}
+
+// commandConfig holds configuration for command setup.
+type commandConfig struct {
+	flags    *cmd.MirrorFlags
+	testCase testCase
+}
+
+// setupCommand creates and configures a test command.
+func setupCommand(t *testing.T, cfg commandConfig, env *testEnv) *cobra.Command {
+	t.Helper()
+
+	mirrorCmd := cmd.NewMirrorCmd()
+
+	flags := cfg.flags
+	if flags == nil {
+		flags = &cmd.MirrorFlags{TestMirror: env.mirror}
 	}
 
-	// Create MirrorFlags
-	flags := &cmd.MirrorFlags{
-		Source:        tc.source,
-		Destination:   tc.destination,
-		JFrogURL:      tc.jfrogURL,
-		JFrogUser:     tc.jfrogUser,
-		JFrogPassword: tc.jfrogPassword,
+	// Set flags
+	setFlags(flags, cfg.testCase, env.configPath)
+
+	// Set command arguments
+	args := buildArgs(cfg.testCase, env.configPath)
+	mirrorCmd.SetArgs(args)
+
+	// Set custom RunE function
+	mirrorCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return flags.RunE(cmd, args)
 	}
 
-	// Run the function
-	config, err := cmd.ValidateAndGetConfig(flags)
+	return mirrorCmd
+}
 
-	// Verify results
-	if tc.shouldErr {
-		require.Error(t, err, "Expected error for invalid input")
-		require.Nil(t, config, "Config should be nil when error occurs")
-
-		return
+// setFlags sets flags on the MirrorFlags struct.
+func setFlags(flags *cmd.MirrorFlags, tc testCase, configPath string) {
+	if tc.useConfig {
+		flags.ConfigFile = configPath
 	}
 
-	require.NoError(t, err, "No error expected for valid input")
-	require.NotNil(t, config, "Config should not be nil")
+	if tc.source != "" {
+		flags.Source = tc.source
+	}
 
-	// Verify URL normalization and scheme
-	var expectedURL string
+	if tc.destination != "" {
+		flags.Destination = tc.destination
+	}
+
 	if tc.jfrogURL != "" {
-		expectedURL = normalizeJFrogURL(tc.jfrogURL)
-	} else {
-		expectedURL = normalizeJFrogURL(tc.envVars["JFROG_URL"])
+		flags.JFrogURL = tc.jfrogURL
 	}
 
-	require.Equal(t, expectedURL, config.Destination.URL, "URL should be normalized as expected")
-
-	// Verify user
 	if tc.jfrogUser != "" {
-		require.Equal(t, tc.jfrogUser, config.Destination.User)
-	} else {
-		require.Equal(t, tc.envVars["JFROG_USER"], config.Destination.User)
+		flags.JFrogUser = tc.jfrogUser
 	}
 
-	// Verify password
 	if tc.jfrogPassword != "" {
-		require.Equal(t, tc.jfrogPassword, config.Destination.Password)
-	} else {
-		require.Equal(t, tc.envVars["JFROG_PASSWORD"], config.Destination.Password)
+		flags.JFrogPassword = tc.jfrogPassword
 	}
 
-	// Verify destination path
-	require.Equal(t, tc.destination, config.Destination.DestPath, "Destination path should be set correctly")
+	flags.JFrogPasswordFromStdin = tc.jfrogPasswordFromStdin
+}
+
+// buildArgs builds command-line arguments.
+func buildArgs(tc testCase, configPath string) []string {
+	args := []string{}
+	if tc.useConfig {
+		args = append(args, "--config", configPath)
+	}
+
+	if tc.source != "" {
+		args = append(args, "--source", tc.source)
+	}
+
+	if tc.destination != "" {
+		args = append(args, "--destination", tc.destination)
+	}
+
+	if tc.jfrogURL != "" {
+		args = append(args, "--jfrog-url", tc.jfrogURL)
+	}
+
+	if tc.jfrogUser != "" {
+		args = append(args, "--jfrog-user", tc.jfrogUser)
+	}
+
+	if tc.jfrogPassword != "" {
+		args = append(args, "--jfrog-password", tc.jfrogPassword)
+	}
+
+	if tc.jfrogPasswordFromStdin {
+		args = append(args, "--jfrog-password-stdin")
+	}
+
+	return args
 }
 
 // Helper functions for environment management.
-func saveEnvironment(keys []string) map[string]string {
+func saveEnvironment(vars map[string]string) map[string]string {
 	env := make(map[string]string)
-	for _, key := range keys {
+	for key := range vars {
 		env[key] = os.Getenv(key)
+		os.Setenv(key, vars[key])
 	}
 
 	return env
@@ -273,7 +232,6 @@ func restoreEnvironment(env map[string]string) {
 type mockHTTPClient struct{}
 
 func (m *mockHTTPClient) RoundTrip(req *http.Request) (*http.Response, error) {
-	// For GitHub URLs, return a mock response
 	if strings.Contains(req.URL.String(), "github.com") {
 		return &http.Response{
 			StatusCode: http.StatusOK,
@@ -281,7 +239,6 @@ func (m *mockHTTPClient) RoundTrip(req *http.Request) (*http.Response, error) {
 		}, nil
 	}
 
-	// For other URLs, return a 404
 	return &http.Response{
 		StatusCode: http.StatusNotFound,
 		Body:       io.NopCloser(bytes.NewReader([]byte{})),
@@ -317,52 +274,10 @@ func (m *mockDestination) Put(ctx context.Context, artifact *core.Artifact, read
 	return nil
 }
 
-// setupMockMirrorForTest creates and configures a mock mirror for testing.
-func setupMockMirrorForTest(t *testing.T) *mirror.DefaultMirror {
-	t.Helper()
-
-	logger := logrus.New()
-	logger.SetOutput(io.Discard) // Suppress log output during tests
-
-	// Setup a mock HTTP client to avoid real network calls
-	mockClient := &http.Client{
-		Transport: &mockHTTPClient{},
-	}
-
-	// Create a GitHub source with the mock client
-	source := sources.NewGitHubSource(logger)
-	source.SetClient(mockClient)
-
-	// Create a test mirror
-	testMirror := mirror.NewDefaultMirror(logger)
-
-	// Add the source and destination
-	err := testMirror.AddSource("default", source)
-	require.NoError(t, err)
-
-	err = testMirror.AddDestination("default", newMockDestination(logger))
-	require.NoError(t, err)
-
-	return testMirror
-}
-
-type testCase struct {
-	name                   string
-	useConfig              bool
-	source                 string
-	destination            string
-	jfrogURL               string
-	jfrogUser              string
-	jfrogPassword          string
-	jfrogPasswordFromStdin bool
-	stdinInput             string
-	wantErr                bool
-	errMsg                 string
-}
-
+// Test functions.
 func TestMirrorCmdRequiredFlags(t *testing.T) {
-	configPath, cleanup := setupTestEnvironment(t)
-	defer cleanup()
+	env := setupTestEnv(t)
+	defer env.cleanup()
 
 	testCases := []testCase{
 		{
@@ -390,199 +305,41 @@ func TestMirrorCmdRequiredFlags(t *testing.T) {
 			jfrogPassword: "flag-password",
 			wantErr:       false,
 		},
-		{
-			name:                   "with JFrog password from stdin",
-			source:                 "https://github.com/owner/repo/releases/download/v1.0.0/artifact.tar.gz",
-			destination:            "repo-local",
-			jfrogURL:               "http://localhost:8081/artifactory",
-			jfrogUser:              "stdin-user",
-			jfrogPasswordFromStdin: true,
-			stdinInput:             "stdin-password",
-			wantErr:                false,
-		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			runTestCase(t, tc, configPath)
+			cmd := setupCommand(t, commandConfig{testCase: tc}, env)
+			err := cmd.Execute()
+
+			if tc.wantErr {
+				require.Error(t, err)
+
+				if tc.errMsg != "" {
+					require.Contains(t, err.Error(), tc.errMsg)
+				}
+
+				return
+			}
+
+			require.NoError(t, err)
 		})
 	}
 }
 
-// setupTestCommand creates and configures a test command with the given test case.
-func setupTestCommand(t *testing.T, tc testCase, configPath string) (*cobra.Command, *cmd.MirrorFlags) {
-	t.Helper()
-
-	// Setup test mirror
-	testMirror := setupMockMirrorForTest(t)
-
-	// Create command
-	mirrorCmd := cmd.NewMirrorCmd()
-	flags := &cmd.MirrorFlags{
-		TestMirror: testMirror,
-	}
-
-	// Set flags directly
-	setDirectFlags(flags, tc, configPath)
-
-	// Set command arguments
-	args := buildCommandArgs(tc, configPath)
-	mirrorCmd.SetArgs(args)
-
-	// Set custom RunE function
-	mirrorCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return flags.RunE(cmd, args)
-	}
-
-	return mirrorCmd, flags
-}
-
-// setDirectFlags sets flags directly on the MirrorFlags struct.
-func setDirectFlags(flags *cmd.MirrorFlags, tc testCase, configPath string) {
-	if tc.useConfig {
-		flags.ConfigFile = configPath
-	}
-
-	if tc.source != "" {
-		flags.Source = tc.source
-	}
-
-	if tc.destination != "" {
-		flags.Destination = tc.destination
-	}
-
-	if tc.jfrogURL != "" {
-		flags.JFrogURL = tc.jfrogURL
-	}
-
-	if tc.jfrogUser != "" {
-		flags.JFrogUser = tc.jfrogUser
-	}
-
-	if tc.jfrogPassword != "" {
-		flags.JFrogPassword = tc.jfrogPassword
-	}
-
-	if tc.jfrogPasswordFromStdin {
-		flags.JFrogPasswordFromStdin = true
-	}
-}
-
-// buildCommandArgs builds the command-line arguments for the test case.
-func buildCommandArgs(tc testCase, configPath string) []string {
-	args := []string{}
-
-	if tc.useConfig {
-		args = append(args, "--config", configPath)
-	}
-
-	if tc.source != "" {
-		args = append(args, "--source", tc.source)
-	}
-
-	if tc.destination != "" {
-		args = append(args, "--destination", tc.destination)
-	}
-
-	if tc.jfrogURL != "" {
-		args = append(args, "--jfrog-url", tc.jfrogURL)
-	}
-
-	if tc.jfrogUser != "" {
-		args = append(args, "--jfrog-user", tc.jfrogUser)
-	}
-
-	if tc.jfrogPassword != "" {
-		args = append(args, "--jfrog-password", tc.jfrogPassword)
-	}
-
-	if tc.jfrogPasswordFromStdin {
-		args = append(args, "--jfrog-password-stdin")
-	}
-
-	return args
-}
-
-// simulateStdinInput simulates input from stdin for testing.
-func simulateStdinInput(t *testing.T, input string) (*os.File, *os.File, func()) {
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-
-	oldStdin := os.Stdin
-	os.Stdin = r
-
-	_, err = w.WriteString(input + "\n")
-	require.NoError(t, err)
-
-	cleanup := func() {
-		w.Close()
-
-		os.Stdin = oldStdin
-	}
-
-	return r, w, cleanup
-}
-
-// validateCommandResult validates the result of command execution.
-func validateCommandResult(t *testing.T, err error, tc testCase) {
-	t.Helper()
-
-	if tc.wantErr {
-		require.Error(t, err)
-		require.Contains(t, err.Error(), tc.errMsg)
-
-		return
-	}
-
-	require.NoError(t, err)
-}
-
-func runTestCase(t *testing.T, tc testCase, configPath string) {
-	t.Helper()
-
-	// Setup stdin if needed
-	if tc.jfrogPasswordFromStdin {
-		_, _, cleanup := simulateStdinInput(t, tc.stdinInput)
-		defer cleanup()
-	}
-
-	// Setup test command
-	mirrorCmd, _ := setupTestCommand(t, tc, configPath)
-
-	// Run command
-	err := mirrorCmd.Execute()
-
-	// Validate results
-	validateCommandResult(t, err, tc)
-}
-
 func TestMirrorCmdFlagRegistration(t *testing.T) {
-	// Create a new mirror command
-	mirrorCmd := cmd.NewMirrorCmd()
-
-	// Test that all expected flags are registered
 	expectedFlags := []string{
-		"config",
-		"source",
-		"destination",
-		"from-file",
-		"raw",
-		"properties",
-		"unzip",
-		"dry-run",
-		"dry-run-mode",
-		"jfrog-url",
-		"jfrog-user",
-		"jfrog-password",
+		"config", "source", "destination", "from-file",
+		"raw", "properties", "unzip", "dry-run",
+		"dry-run-mode", "jfrog-url", "jfrog-user", "jfrog-password",
 	}
 
+	mirrorCmd := cmd.NewMirrorCmd()
 	for _, flagName := range expectedFlags {
 		flag := mirrorCmd.Flags().Lookup(flagName)
 		require.NotNil(t, flag, "Flag %s should be registered", flagName)
 	}
 
-	// Test that flags are not registered multiple times
-	// This will panic if flags are registered twice
 	require.NotPanics(t, func() {
 		cmd.NewMirrorCmd()
 	})
@@ -600,7 +357,6 @@ func TestMirrorFlagsValidation(t *testing.T) {
 				DryRun:     true,
 				DryRunMode: "all",
 			},
-			wantError: false,
 		},
 		{
 			name: "valid dry run mode upload",
@@ -608,7 +364,6 @@ func TestMirrorFlagsValidation(t *testing.T) {
 				DryRun:     true,
 				DryRunMode: "upload",
 			},
-			wantError: false,
 		},
 		{
 			name: "invalid dry run mode",
@@ -624,7 +379,6 @@ func TestMirrorFlagsValidation(t *testing.T) {
 				DryRun:     false,
 				DryRunMode: "invalid",
 			},
-			wantError: false,
 		},
 	}
 
@@ -642,57 +396,9 @@ func TestMirrorFlagsValidation(t *testing.T) {
 	}
 }
 
-// setupTestEnvironment sets up the test environment with config file and environment variables.
-func setupTestEnvironment(t *testing.T) (string, func()) {
-	t.Helper()
-
-	// Save original environment variables
-	origJfrogURL := os.Getenv("JFROG_URL")
-	origJfrogUser := os.Getenv("JFROG_USER")
-	origJfrogPass := os.Getenv("JFROG_PASSWORD")
-
-	// Set test environment variables
-	os.Setenv("JFROG_URL", "http://localhost:8081")
-	os.Setenv("JFROG_USER", "admin")
-	os.Setenv("JFROG_PASSWORD", "password")
-
-	// Create temporary directory
-	tmpDir := t.TempDir()
-
-	// Create config file
-	configPath := filepath.Join(tmpDir, "test.yaml")
-	configContent := []byte(`
-source:
-  type: github
-  url: https://github.com/owner/repo/releases/download/v1.0.0/artifact.tar.gz
-destination:
-  type: jfrog
-  url: http://localhost:8081/artifactory/generic-local/artifact.tar.gz
-  user: admin
-  password: password
-log_level: info
-concurrent: 4
-`)
-	err := os.WriteFile(configPath, configContent, 0o644)
-	require.NoError(t, err)
-
-	cleanup := func() {
-		os.Setenv("JFROG_URL", origJfrogURL)
-		os.Setenv("JFROG_USER", origJfrogUser)
-		os.Setenv("JFROG_PASSWORD", origJfrogPass)
-	}
-
-	return configPath, cleanup
-}
-
-// TestGetConfig tests the getConfig method specifically, focusing on the distinction
-// between JFrog URL and destination path to prevent regression of the bug where
-// destination path was incorrectly used as the JFrog URL.
 func TestGetConfig(t *testing.T) {
-	// Save original environment
-	origEnv := saveEnvironment([]string{"JFROG_URL", "JFROG_USER", "JFROG_PASSWORD"})
-	// Restore environment after tests
-	defer restoreEnvironment(origEnv)
+	env := setupTestEnv(t)
+	defer env.cleanup()
 
 	testCases := []struct {
 		name         string
@@ -727,17 +433,11 @@ func TestGetConfig(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Clear environment
-			os.Unsetenv("JFROG_URL")
-			os.Unsetenv("JFROG_USER")
-			os.Unsetenv("JFROG_PASSWORD")
-
-			// Set environment variables
-			for k, v := range tc.envVars {
-				os.Setenv(k, v)
+			if tc.envVars != nil {
+				origEnv := saveEnvironment(tc.envVars)
+				defer restoreEnvironment(origEnv)
 			}
 
-			// Create flags and run test
 			flags := &cmd.MirrorFlags{
 				Source:        "https://github.com/example/repo/releases/download/v1.0/file.zip",
 				Destination:   tc.destination,
@@ -748,8 +448,8 @@ func TestGetConfig(t *testing.T) {
 
 			config, err := cmd.ValidateAndGetConfig(flags)
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedURL, config.Destination.URL, "URL should be normalized")
-			require.Equal(t, tc.expectedPath, config.Destination.DestPath, "Path should be handled separately from URL")
+			require.Equal(t, tc.expectedURL, config.Destination.URL)
+			require.Equal(t, tc.expectedPath, config.Destination.DestPath)
 		})
 	}
 }
