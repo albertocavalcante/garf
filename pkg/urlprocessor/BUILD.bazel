@@ -11,6 +11,7 @@ go_library(
     ],
     importpath = "github.com/albertocavalcante/garf/pkg/urlprocessor",
     visibility = ["//visibility:public"],
+    deps = ["//pkg/core"],
 )
 
 go_test(

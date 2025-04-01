@@ -4,6 +4,8 @@ import (
 	"net/url"
 	"path"
 	"strings"
+
+	"github.com/albertocavalcante/garf/pkg/core"
 )
 
 // GitHubProcessor handles GitHub release URLs and creates structured paths.
@@ -11,9 +13,13 @@ type GitHubProcessor struct{}
 
 // CanProcess checks if the URL is from GitHub.
 func (p *GitHubProcessor) CanProcess(sourceURL *url.URL) bool {
-	return strings.Contains(sourceURL.Host, GitHubHost)
+	isGitHub, _ := core.IsGitHubURL(sourceURL.String())
+
+	return isGitHub
 }
 
+// Process transforms a GitHub URL into a structured path.
+// If raw=true, it preserves the complete URL structure.
 // If raw=false, it creates a cleaner structure like github.com/owner/repo/version/filename.
 func (p *GitHubProcessor) Process(sourceURL *url.URL, raw bool) string {
 	// Extract filename
@@ -26,7 +32,7 @@ func (p *GitHubProcessor) Process(sourceURL *url.URL, raw bool) string {
 	if len(pathParts) >= 5 && pathParts[2] == "releases" && pathParts[3] == "download" {
 		if raw {
 			// Raw mode: Keep the full GitHub path structure
-			return path.Join(GitHubHost, strings.TrimPrefix(sourceURL.Path, "/"))
+			return path.Join(core.GitHubHost, strings.TrimPrefix(sourceURL.Path, "/"))
 		} else {
 			// Clean mode: Create a structured path
 			owner := pathParts[0]
@@ -34,7 +40,7 @@ func (p *GitHubProcessor) Process(sourceURL *url.URL, raw bool) string {
 			version := pathParts[4]
 
 			// Build path: github.com/owner/repo/version/filename
-			return path.Join(GitHubHost, owner, repo, version, filename)
+			return path.Join(core.GitHubHost, owner, repo, version, filename)
 		}
 	}
 

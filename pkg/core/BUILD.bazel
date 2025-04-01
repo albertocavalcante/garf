@@ -3,9 +3,11 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "core",
     srcs = [
+        "errors.go",
         "interfaces.go",
         "options.go",
         "properties.go",
+        "urls.go",
     ],
     importpath = "github.com/albertocavalcante/garf/pkg/core",
     visibility = ["//visibility:public"],
@@ -16,10 +18,10 @@ go_test(
     size = "small",
     srcs = [
         "core_test.go",
+        "errors_test.go",
         "properties_test.go",
+        "urls_test.go",
     ],
-    deps = [
-        ":core",
-        "@com_github_stretchr_testify//require",
-    ],
+    embed = [":core"],
+    deps = ["@com_github_stretchr_testify//require"],
 )

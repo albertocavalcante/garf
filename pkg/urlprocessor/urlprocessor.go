@@ -5,7 +5,6 @@ package urlprocessor
 import (
 	"net/url"
 	"path"
-	"strings"
 )
 
 // PathBuilder transforms URLs into structured storage paths.
@@ -22,14 +21,14 @@ type processor struct {
 
 // New creates a new PathBuilder with default processors.
 func New() *PathBuilder {
+	githubProc := &GitHubProcessor{}
+
 	return &PathBuilder{
 		processors: []processor{
 			// GitHub URLs processor
 			{
-				canHandle: func(u *url.URL) bool {
-					return strings.Contains(u.Host, GitHubHost)
-				},
-				process: processGitHubURL,
+				canHandle: githubProc.CanProcess,
+				process:   githubProc.Process,
 			},
 			// Default fallback processor
 			{
@@ -71,32 +70,4 @@ func (p *PathBuilder) ProcessURLString(urlStr string, raw bool) (string, error) 
 	}
 
 	return p.ProcessURL(sourceURL, raw), nil
-}
-
-// processGitHubURL handles GitHub-specific URL processing.
-func processGitHubURL(sourceURL *url.URL, raw bool) string {
-	// Extract filename
-	filename := path.Base(sourceURL.Path)
-
-	// Parse the GitHub path components
-	pathParts := strings.Split(strings.TrimPrefix(sourceURL.Path, "/"), "/")
-
-	// Check if this is a GitHub release URL
-	if len(pathParts) >= 5 && pathParts[2] == "releases" && pathParts[3] == "download" {
-		if raw {
-			// Raw mode: Keep the full GitHub path
-			return path.Join(GitHubHost, strings.TrimPrefix(sourceURL.Path, "/"))
-		} else {
-			// Clean mode: Create a structured path
-			owner := pathParts[0]
-			repo := pathParts[1]
-			version := pathParts[4]
-
-			// Build path: github.com/owner/repo/version/filename
-			return path.Join(GitHubHost, owner, repo, version, filename)
-		}
-	}
-
-	// For other GitHub URLs, use just the filename
-	return filename
 }
