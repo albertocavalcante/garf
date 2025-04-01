@@ -16,7 +16,7 @@ const (
 func IsGitHubURL(urlStr string) (bool, error) {
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
-		return false, fmt.Errorf("invalid URL: %w", err)
+		return false, fmt.Errorf("failed to parse URL: %w", err)
 	}
 
 	// Allow test server URLs during testing
@@ -24,7 +24,7 @@ func IsGitHubURL(urlStr string) (bool, error) {
 		return true, nil
 	}
 
-	return strings.Contains(parsedURL.Host, GitHubHost), nil
+	return parsedURL.Host == GitHubHost || strings.HasSuffix(parsedURL.Host, "."+GitHubHost), nil
 }
 
 // ValidateGitHubURL validates that the given URL is a GitHub URL.
