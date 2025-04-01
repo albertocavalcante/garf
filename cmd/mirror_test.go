@@ -120,6 +120,39 @@ var validateConfigTestCases = []configTestCase{
 		},
 		shouldErr: false,
 	},
+	// Testing URL normalization - adding scheme
+	{
+		name:          "JFrog URL without scheme gets http:// added",
+		source:        "https://github.com/example/repo/releases/download/v1.0/file.zip",
+		destination:   "repo-local",
+		jfrogURL:      "example.jfrog.io",
+		jfrogUser:     "user",
+		jfrogPassword: "password",
+		envVars:       map[string]string{},
+		shouldErr:     false,
+	},
+	// Testing URL normalization - adding /artifactory
+	{
+		name:          "JFrog URL without /artifactory gets it added",
+		source:        "https://github.com/example/repo/releases/download/v1.0/file.zip",
+		destination:   "repo-local",
+		jfrogURL:      "https://example.jfrog.io",
+		jfrogUser:     "user",
+		jfrogPassword: "password",
+		envVars:       map[string]string{},
+		shouldErr:     false,
+	},
+	// Testing proper handling of destination vs JFrog URL
+	{
+		name:          "Destination path is separate from JFrog URL",
+		source:        "https://github.com/example/repo/releases/download/v1.0/file.zip",
+		destination:   "custom-repo-path",
+		jfrogURL:      "https://example.jfrog.io",
+		jfrogUser:     "user",
+		jfrogPassword: "password",
+		envVars:       map[string]string{},
+		shouldErr:     false,
+	},
 }
 
 // TestValidateAndGetConfig tests the ValidateAndGetConfig function with various
@@ -138,6 +171,21 @@ func TestValidateAndGetConfig(t *testing.T) {
 	}
 }
 
+// normalizeJFrogURL adds http:// scheme and /artifactory path if needed.
+func normalizeJFrogURL(url string) string {
+	// Add scheme if needed
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		url = "http://" + url
+	}
+
+	// Add /artifactory if needed
+	if !strings.Contains(url, "/artifactory") {
+		url = strings.TrimSuffix(url, "/") + "/artifactory"
+	}
+
+	return url
+}
+
 // runValidateConfigTest runs a single test case for ValidateAndGetConfig.
 func runValidateConfigTest(t *testing.T, tc configTestCase) {
 	// Clear environment
@@ -150,8 +198,17 @@ func runValidateConfigTest(t *testing.T, tc configTestCase) {
 		os.Setenv(k, v)
 	}
 
+	// Create MirrorFlags
+	flags := &cmd.MirrorFlags{
+		Source:        tc.source,
+		Destination:   tc.destination,
+		JFrogURL:      tc.jfrogURL,
+		JFrogUser:     tc.jfrogUser,
+		JFrogPassword: tc.jfrogPassword,
+	}
+
 	// Run the function
-	config, err := cmd.ValidateAndGetConfig(tc.source, tc.destination, tc.jfrogURL, tc.jfrogUser, tc.jfrogPassword)
+	config, err := cmd.ValidateAndGetConfig(flags)
 
 	// Verify results
 	if tc.shouldErr {
@@ -164,24 +221,32 @@ func runValidateConfigTest(t *testing.T, tc configTestCase) {
 	require.NoError(t, err, "No error expected for valid input")
 	require.NotNil(t, config, "Config should not be nil")
 
-	// Check if flag values take precedence
+	// Verify URL normalization and scheme
+	var expectedURL string
 	if tc.jfrogURL != "" {
-		require.Equal(t, tc.jfrogURL, config.URL)
+		expectedURL = normalizeJFrogURL(tc.jfrogURL)
 	} else {
-		require.Equal(t, tc.envVars["JFROG_URL"], config.URL)
+		expectedURL = normalizeJFrogURL(tc.envVars["JFROG_URL"])
 	}
 
+	require.Equal(t, expectedURL, config.Destination.URL, "URL should be normalized as expected")
+
+	// Verify user
 	if tc.jfrogUser != "" {
-		require.Equal(t, tc.jfrogUser, config.User)
+		require.Equal(t, tc.jfrogUser, config.Destination.User)
 	} else {
-		require.Equal(t, tc.envVars["JFROG_USER"], config.User)
+		require.Equal(t, tc.envVars["JFROG_USER"], config.Destination.User)
 	}
 
+	// Verify password
 	if tc.jfrogPassword != "" {
-		require.Equal(t, tc.jfrogPassword, config.Password)
+		require.Equal(t, tc.jfrogPassword, config.Destination.Password)
 	} else {
-		require.Equal(t, tc.envVars["JFROG_PASSWORD"], config.Password)
+		require.Equal(t, tc.envVars["JFROG_PASSWORD"], config.Destination.Password)
 	}
+
+	// Verify destination path
+	require.Equal(t, tc.destination, config.Destination.DestPath, "Destination path should be set correctly")
 }
 
 // Helper functions for environment management.
@@ -244,11 +309,11 @@ func (m *mockDestination) Close() error {
 	return nil
 }
 
-func (m *mockDestination) Exists(ctx context.Context, artifact *core.Artifact) (bool, error) {
+func (m *mockDestination) Exists(ctx context.Context, artifact *core.Artifact, raw bool) (bool, error) {
 	return false, nil
 }
 
-func (m *mockDestination) Put(ctx context.Context, artifact *core.Artifact, reader io.Reader) error {
+func (m *mockDestination) Put(ctx context.Context, artifact *core.Artifact, reader io.Reader, raw bool) error {
 	return nil
 }
 
@@ -618,4 +683,73 @@ concurrent: 4
 	}
 
 	return configPath, cleanup
+}
+
+// TestGetConfig tests the getConfig method specifically, focusing on the distinction
+// between JFrog URL and destination path to prevent regression of the bug where
+// destination path was incorrectly used as the JFrog URL.
+func TestGetConfig(t *testing.T) {
+	// Save original environment
+	origEnv := saveEnvironment([]string{"JFROG_URL", "JFROG_USER", "JFROG_PASSWORD"})
+	// Restore environment after tests
+	defer restoreEnvironment(origEnv)
+
+	testCases := []struct {
+		name         string
+		jfrogURL     string
+		destination  string
+		envVars      map[string]string
+		expectedURL  string
+		expectedPath string
+	}{
+		{
+			name:         "From flag with complete URL",
+			jfrogURL:     "https://example.jfrog.io/artifactory",
+			destination:  "repo-local",
+			expectedURL:  "https://example.jfrog.io/artifactory",
+			expectedPath: "repo-local",
+		},
+		{
+			name:         "URL normalization - adding scheme",
+			jfrogURL:     "example.jfrog.io",
+			destination:  "repo-local",
+			expectedURL:  "http://example.jfrog.io/artifactory",
+			expectedPath: "repo-local",
+		},
+		{
+			name:         "From env var",
+			destination:  "repo-local",
+			envVars:      map[string]string{"JFROG_URL": "https://example.jfrog.io/artifactory"},
+			expectedURL:  "https://example.jfrog.io/artifactory",
+			expectedPath: "repo-local",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Clear environment
+			os.Unsetenv("JFROG_URL")
+			os.Unsetenv("JFROG_USER")
+			os.Unsetenv("JFROG_PASSWORD")
+
+			// Set environment variables
+			for k, v := range tc.envVars {
+				os.Setenv(k, v)
+			}
+
+			// Create flags and run test
+			flags := &cmd.MirrorFlags{
+				Source:        "https://github.com/example/repo/releases/download/v1.0/file.zip",
+				Destination:   tc.destination,
+				JFrogURL:      tc.jfrogURL,
+				JFrogUser:     "user",
+				JFrogPassword: "password",
+			}
+
+			config, err := cmd.ValidateAndGetConfig(flags)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedURL, config.Destination.URL, "URL should be normalized")
+			require.Equal(t, tc.expectedPath, config.Destination.DestPath, "Path should be handled separately from URL")
+		})
+	}
 }
