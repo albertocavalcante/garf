@@ -114,7 +114,7 @@ func extractFileToDestination(zipFile *zip.File, destPath string) error {
 }
 
 // ExtractSingleFile extracts a single file from the ZIP archive at zipPath.
-// 
+//
 // It validates the extraction options and creates the destination directory (if specified).
 // The function opens the ZIP file, locates a single non-directory file within it, and
 // extracts that file to a destination path derived from options. If DestinationDir is provided,
