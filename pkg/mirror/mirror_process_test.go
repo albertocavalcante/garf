@@ -10,50 +10,45 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSetupDestinationSimplePath(t *testing.T) {
-	logger := logrus.New()
-
-	cfg := &config.Config{
-		Destination: config.DestinationConfig{
-			Type:     "jfrog",
-			URL:      "https://jfrog.example.com",
-			User:     "user",
-			Password: "password",
-			DestPath: "generic-local",
+func TestSetupDestinationPaths(t *testing.T) {
+	tests := []struct {
+		name     string
+		destPath string
+	}{
+		{
+			name:     "simple path",
+			destPath: "generic-local",
+		},
+		{
+			name:     "nested path",
+			destPath: "generic/sandbox-mirror",
 		},
 	}
 
-	dest, err := mirror.SetupDestination(logger, cfg)
-	require.NoError(t, err)
-
-	jfrogDest, ok := dest.(*destinations.JFrogDestination)
-	require.True(t, ok)
-
-	destConfig := jfrogDest.GetConfig()
-	require.Equal(t, "generic-local", destConfig.DestPath)
-}
-
-func TestSetupDestinationNestedPath(t *testing.T) {
 	logger := logrus.New()
 
-	cfg := &config.Config{
-		Destination: config.DestinationConfig{
-			Type:     "jfrog",
-			URL:      "https://jfrog.example.com",
-			User:     "user",
-			Password: "password",
-			DestPath: "generic/sandbox-mirror",
-		},
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Destination: config.DestinationConfig{
+					Type:     "jfrog",
+					URL:      "https://jfrog.example.com",
+					User:     "user",
+					Password: "password",
+					DestPath: tt.destPath,
+				},
+			}
+
+			dest, err := mirror.SetupDestination(logger, cfg)
+			require.NoError(t, err)
+
+			jfrogDest, ok := dest.(*destinations.JFrogDestination)
+			require.True(t, ok)
+
+			destConfig := jfrogDest.GetConfig()
+			require.Equal(t, tt.destPath, destConfig.DestPath)
+		})
 	}
-
-	dest, err := mirror.SetupDestination(logger, cfg)
-	require.NoError(t, err)
-
-	jfrogDest, ok := dest.(*destinations.JFrogDestination)
-	require.True(t, ok)
-
-	destConfig := jfrogDest.GetConfig()
-	require.Equal(t, "generic/sandbox-mirror", destConfig.DestPath)
 }
 
 func TestSetupDestinationInvalidType(t *testing.T) {
