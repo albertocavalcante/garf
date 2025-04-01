@@ -205,7 +205,13 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 		go func(d core.Destination, r io.Reader) {
 			defer wg.Done()
 
-			if err := d.Put(ctx, artifact, r); err != nil {
+			// Get raw value from options, defaulting to false if options is nil
+			raw := false
+			if opts != nil {
+				raw = opts.Raw
+			}
+
+			if err := d.Put(ctx, artifact, r, raw); err != nil {
 				errChan <- fmt.Errorf("failed to upload to destination: %w", err)
 			}
 		}(dest, readers[i])
@@ -275,12 +281,12 @@ func (m *DefaultMirror) Mirror(
 }
 
 // SetupSource creates and configures a source based on the provided configuration.
-func (m *DefaultMirror) SetupSource(logger *logrus.Logger, config *config.Config) (config.Source, error) {
+func (m *DefaultMirror) SetupSource(logger *logrus.Logger, config *config.Config) (core.Source, error) {
 	return SetupSource(logger, config)
 }
 
 // SetupDestination creates and configures a destination based on the provided configuration.
-func (m *DefaultMirror) SetupDestination(logger *logrus.Logger, config *config.Config) (config.Destination, error) {
+func (m *DefaultMirror) SetupDestination(logger *logrus.Logger, config *config.Config) (core.Destination, error) {
 	return SetupDestination(logger, config)
 }
 
