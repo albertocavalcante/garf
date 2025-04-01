@@ -35,6 +35,7 @@ type DestinationConfig struct {
 	URL      string `yaml:"url"`
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
+	DestPath string `yaml:"dest_path"`
 }
 
 // Source represents a source from which artifacts can be retrieved.
