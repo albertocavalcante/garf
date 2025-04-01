@@ -12,6 +12,10 @@
     ],
     "bazel.buildifierFixOnFormat": true,
     "editor.detectIndentation": false,
+    "files.exclude": {
+        "**/.git": true,
+        "bazel-*/": true,
+    },
     "[yaml]": {
         "editor.tabSize": 2,
     },
