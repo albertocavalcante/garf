@@ -30,11 +30,11 @@ type mockDestination struct {
 	core.Destination
 }
 
-func (d *mockDestination) Put(ctx context.Context, artifact *core.Artifact, content io.Reader) error {
+func (d *mockDestination) Put(ctx context.Context, artifact *core.Artifact, content io.Reader, raw bool) error {
 	return nil
 }
 
-func (d *mockDestination) Exists(ctx context.Context, artifact *core.Artifact) (bool, error) {
+func (d *mockDestination) Exists(ctx context.Context, artifact *core.Artifact, raw bool) (bool, error) {
 	return false, nil
 }
 
@@ -182,10 +182,9 @@ func TestDefaultMirrorMirror(t *testing.T) {
 					},
 				},
 				opts: &core.MirrorOptions{
-					PreserveStructure: true,
-					VerifyChecksum:    true,
-					Concurrent:        4,
-					Context:           context.Background(),
+					Raw:        false,
+					Concurrent: 4,
+					Context:    context.Background(),
 				},
 			},
 			validate: func(t *testing.T, m *mirror.DefaultMirror) {

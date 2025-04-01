@@ -40,6 +40,7 @@ func SetupDestination(logger *logrus.Logger, config *config.Config) (core.Destin
 			URL:      config.Destination.URL,
 			User:     config.Destination.User,
 			Password: config.Destination.Password,
+			DestPath: config.Destination.DestPath,
 		}
 		destination = destinations.NewJFrogDestination(destConfig, logger)
 	default:

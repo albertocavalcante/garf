@@ -6,66 +6,55 @@ concurrency = 10
 [linters]
 default = 'all'
 disable = [
-  'asasalint',
-  'bodyclose',
-  'canonicalheader',
-  'containedctx',
-  'contextcheck',
-  'durationcheck',
-  'err113',
-  'errcheck',
-  'errchkjson',
-  'errname',
-  'errorlint',
-  'exhaustive',
-  'exhaustruct',
-  'exptostd',
-  'fatcontext',
-  'forbidigo',
-  'forcetypeassert',
-  'ginkgolinter',
-  'gochecknoglobals',
-  'gochecksumtype',
-  'gocritic',
-  'gosec',
-  'gosmopolitan',
-  'govet',
-  'iface',
-  'importas',
-  'intrange',
-  'ireturn',
-  'loggercheck',
-  'makezero',
-  'mirror',
-  'musttag',
-  'nilerr',
-  'nilnesserr',
-  'nilnil',
-  'noctx',
-  'nonamedreturns',
-  'paralleltest',
-  'perfsprint',
-  'protogetter',
-  'reassign',
-  'recvcheck',
-  'revive',
-  'rowserrcheck',
-  'sloglint',
-  'spancheck',
-  'sqlclosecheck',
-  'staticcheck',
-  'tagliatelle',
-  'testifylint',
-  'thelper',
-  'tparallel',
-  'unconvert',
-  'unparam',
-  'unused',
-  'usetesting',
-  'varnamelen',
-  'wastedassign',
-  'wrapcheck',
-  'zerologlint'
+    'asasalint',
+    'bodyclose',
+    'canonicalheader',
+    'containedctx',
+    'contextcheck',
+    'durationcheck',
+    'err113',
+    'errchkjson',
+    'errname',
+    'exhaustruct',
+    'exptostd',
+    'fatcontext',
+    'forbidigo',
+    'forcetypeassert',
+    'ginkgolinter',
+    'gochecknoglobals',
+    'gochecksumtype',
+    'gosmopolitan',
+    'iface',
+    'importas',
+    'intrange',
+    'ireturn',
+    'loggercheck',
+    'makezero',
+    'mirror',
+    'musttag',
+    'nilerr',
+    'nilnesserr',
+    'nilnil',
+    'noctx',
+    'nonamedreturns',
+    'paralleltest',
+    'perfsprint',
+    'protogetter',
+    'reassign',
+    'recvcheck',
+    'revive',
+    'rowserrcheck',
+    'spancheck',
+    'sqlclosecheck',
+    'tagliatelle',
+    'thelper',
+    'tparallel',
+    'unconvert',
+    'unparam',
+    'usetesting',
+    'varnamelen',
+    'wrapcheck',
+    'zerologlint',
 ]
 
 [linters.settings]
@@ -76,32 +65,22 @@ disable = [
 pkg = 'io/ioutil'
 desc = 'Deprecated: As of Go 1.16, the same functionality is now provided by package io or package os, and those implementations should be preferred in new code. See the specific function documentation for details.'
 
-[linters.exclusions]
-generated = 'lax'
-presets = [
-  'comments',
-  'common-false-positives',
-  'legacy',
-  'std-error-handling'
-]
-paths = [
-  'third_party$',
-  'builtin$',
-  'examples$'
+[linters.settings.gosec]
+excludes = [
+    "G306", # Expect WriteFile permissions to be 0600 or less
+    "G107", # Potential HTTP request made with variable url
+    "G305", # File traversal when extracting zip/tar archive
+    "G110", # Potential DoS vulnerability via decompression bomb
 ]
 
+[linters.exclusions]
+generated = 'lax'
+presets = ['comments', 'common-false-positives', 'legacy', 'std-error-handling']
+paths = ['third_party$', 'builtin$', 'examples$']
+
 [formatters]
-enable = [
-  'gci',
-  'gofmt',
-  'gofumpt',
-  'goimports'
-]
+enable = ['gci', 'gofmt', 'gofumpt', 'goimports']
 
 [formatters.exclusions]
 generated = 'lax'
-paths = [
-  'third_party$',
-  'builtin$',
-  'examples$'
-]
+paths = ['third_party$', 'builtin$', 'examples$']

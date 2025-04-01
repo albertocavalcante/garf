@@ -18,14 +18,12 @@ func TestMirrorOptions(t *testing.T) {
 		{
 			name: "valid options",
 			opts: &core.MirrorOptions{
-				PreserveStructure: true,
-				VerifyChecksum:    true,
-				Concurrent:        4,
-				Context:           context.Background(),
+				Raw:        false,
+				Concurrent: 4,
+				Context:    context.Background(),
 			},
 			validate: func(t *testing.T, opts *core.MirrorOptions) {
-				require.True(t, opts.PreserveStructure)
-				require.True(t, opts.VerifyChecksum)
+				require.False(t, opts.Raw)
 				require.Equal(t, 4, opts.Concurrent)
 				require.NotNil(t, opts.Context)
 			},
@@ -34,20 +32,18 @@ func TestMirrorOptions(t *testing.T) {
 		{
 			name: "zero concurrent",
 			opts: &core.MirrorOptions{
-				PreserveStructure: true,
-				VerifyChecksum:    true,
-				Concurrent:        0,
-				Context:           context.Background(),
+				Raw:        false,
+				Concurrent: 0,
+				Context:    context.Background(),
 			},
 			validateError: true,
 		},
 		{
 			name: "nil context",
 			opts: &core.MirrorOptions{
-				PreserveStructure: true,
-				VerifyChecksum:    true,
-				Concurrent:        4,
-				Context:           nil,
+				Raw:        false,
+				Concurrent: 4,
+				Context:    nil,
 			},
 			validateError: true,
 		},

@@ -1,0 +1,22 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "urlprocessor",
+    srcs = [
+        "constants.go",
+        "github.go",
+        "processor.go",
+        "registry.go",
+        "urlprocessor.go",
+    ],
+    importpath = "github.com/albertocavalcante/garf/pkg/urlprocessor",
+    visibility = ["//visibility:public"],
+    deps = ["//pkg/core"],
+)
+
+go_test(
+    name = "urlprocessor_test",
+    size = "small",
+    srcs = ["processor_test.go"],
+    deps = [":urlprocessor"],
+)

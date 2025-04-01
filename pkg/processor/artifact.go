@@ -42,9 +42,9 @@ func ProcessArtifact(
 	return nil
 }
 
-// handleZipExtraction extracts the zip file located at the artifact's Location into its parent directory while preserving the original file name.
-// It updates the artifact's Name and Location to correspond to the extracted file and then mirrors the file using the provided mirror instance.
-// Returns an error if either extraction or mirroring fails.
+// handleZipExtraction extracts the zip file located at the artifact's Location into its parent directory
+// while preserving the original file name. It updates the artifact's Name and Location to correspond to the
+// extracted file and then mirrors the file using the provided mirror instance.
 func handleZipExtraction(
 	ctx context.Context,
 	mirror *mirror.DefaultMirror,

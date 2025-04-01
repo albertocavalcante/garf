@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
-	"strings"
 
 	"github.com/albertocavalcante/garf/pkg/core"
 	"github.com/sirupsen/logrus"
@@ -36,25 +34,6 @@ func NewGitHubSource(logger *logrus.Logger) *GitHubSource {
 // List is not implemented for GitHub source as it requires specific release URLs.
 func (s *GitHubSource) List(ctx context.Context) ([]*core.Artifact, error) {
 	return nil, fmt.Errorf("listing artifacts from GitHub is not supported, use specific release URLs")
-}
-
-// validateGitHubURL validates that the given URL is a GitHub URL.
-func validateGitHubURL(location string) error {
-	parsedURL, err := url.Parse(location)
-	if err != nil {
-		return fmt.Errorf("invalid URL: %w", err)
-	}
-
-	// Allow test server URLs during testing
-	if strings.Contains(parsedURL.Host, "127.0.0.1") || strings.Contains(parsedURL.Host, "localhost") {
-		return nil
-	}
-
-	if !strings.Contains(parsedURL.Host, "github.com") {
-		return fmt.Errorf("not a GitHub URL: %s", location)
-	}
-
-	return nil
 }
 
 // ensureTempDir ensures that a temporary directory exists for downloads.
@@ -127,7 +106,7 @@ func (s *GitHubSource) Get(ctx context.Context, artifact *core.Artifact) (io.Rea
 		"url":    artifact.Location,
 	})
 
-	if err := validateGitHubURL(artifact.Location); err != nil {
+	if err := core.ValidateGitHubURL(artifact.Location); err != nil {
 		logger.WithError(err).Error("Invalid URL")
 
 		return nil, err

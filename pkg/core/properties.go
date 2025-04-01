@@ -4,13 +4,13 @@ import "strings"
 
 const propertyKeyValueParts = 2
 
-// ParseProperties converts a slice of "key=value" strings into a map of key-value pairs.
-// For each string, it splits at the first '=' character and trims any surrounding whitespace from both the key and value.
-// Strings that do not consist of exactly one '=' are ignored.
-func ParseProperties(props []string) map[string]string {
+// ParseProperties parses a slice of strings into a map of key-value pairs.
+// For each string, it splits at the first '=' character and trims any surrounding whitespace
+// from both the key and value.
+func ParseProperties(properties []string) map[string]string {
 	result := make(map[string]string)
 
-	for _, prop := range props {
+	for _, prop := range properties {
 		parts := strings.SplitN(prop, "=", propertyKeyValueParts)
 		if len(parts) == propertyKeyValueParts {
 			key := strings.TrimSpace(parts[0])

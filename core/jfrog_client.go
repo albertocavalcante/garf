@@ -1,8 +1,10 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 
@@ -60,7 +62,8 @@ func NewJFrogClient(jc *JFrogConfig) (*JFrogClient, error) {
 
 // setupProgressReader returns an io.Reader that wraps the provided content to report progress during read operations.
 // If the progress function is nil, the original reader is returned unchanged.
-// When the reader supports seeking, it attempts to determine the total content size to enable accurate progress reporting.
+// When the reader supports seeking, it attempts to determine the total content size
+// to enable accurate progress reporting.
 func setupProgressReader(content io.Reader, progressFunc progress.ProgressFunc) io.Reader {
 	if progressFunc == nil {
 		return content
@@ -95,7 +98,7 @@ func (c *JFrogClient) UploadGenericArtifact(
 	// Create a temporary file to upload from
 	tempFile, err := os.CreateTemp("", "artifact-*")
 	if err != nil {
-		return fmt.Errorf("failed to create temp file: %v", err)
+		return fmt.Errorf("failed to create temp file: %w", err)
 	}
 
 	defer os.Remove(tempFile.Name())
@@ -109,7 +112,7 @@ func (c *JFrogClient) UploadGenericArtifact(
 
 	// Copy content to temp file
 	if _, err := io.Copy(tempFile, content); err != nil {
-		return fmt.Errorf("failed to write to temp file: %v", err)
+		return fmt.Errorf("failed to write to temp file: %w", err)
 	}
 
 	// Create upload parameters
@@ -139,7 +142,7 @@ func (c *JFrogClient) UploadGenericArtifact(
 	// Upload the artifact
 	_, totalFailed, err := c.UploadFiles(artifactory.UploadServiceOptions{}, params)
 	if err != nil {
-		return fmt.Errorf("failed to upload artifact: %v", err)
+		return fmt.Errorf("failed to upload artifact: %w", err)
 	}
 
 	if totalFailed > 0 {
@@ -173,4 +176,25 @@ func ParseProperty(prop string) (key, value string, err error) {
 	}
 
 	return parts[0], parts[1], nil
+}
+
+// When the reader supports seeking, it attempts to determine the total content size
+// to enable accurate progress reporting.
+func (c *JFrogClient) Put(ctx context.Context, url string, content io.Reader) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, content)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	return nil
 }
