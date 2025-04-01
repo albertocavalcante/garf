@@ -7,11 +7,11 @@ import (
 
 // MirrorOptions configures how artifacts are mirrored.
 type MirrorOptions struct {
-	// PreserveStructure determines if the original directory structure should be maintained
-	PreserveStructure bool
+	// Context allows for cancellation and timeouts
+	Context context.Context
 
-	// VerifyChecksum enables checksum verification during mirroring
-	VerifyChecksum bool
+	// Raw keeps the original URL structure instead of creating a cleaner path
+	Raw bool
 
 	// Concurrent specifies the number of concurrent mirror operations
 	// If set to 0, a sensible default will be used
@@ -19,9 +19,6 @@ type MirrorOptions struct {
 
 	// ProgressFunc is called to report progress during mirroring
 	ProgressFunc func(current, total int64, message string)
-
-	// Context allows for cancellation and timeouts
-	Context context.Context
 
 	// DryRun indicates if this is a dry run operation
 	DryRun bool
