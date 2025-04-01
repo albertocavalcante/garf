@@ -21,10 +21,12 @@ type Source interface {
 // Destination represents a location where artifacts can be stored.
 type Destination interface {
 	// Put stores an artifact in the destination
-	Put(ctx context.Context, artifact *Artifact, content io.Reader) error
+	// If raw is true, keeps the original URL structure
+	Put(ctx context.Context, artifact *Artifact, content io.Reader, raw bool) error
 
 	// Exists checks if an artifact already exists in the destination
-	Exists(ctx context.Context, artifact *Artifact) (bool, error)
+	// If raw is true, keeps the original URL structure
+	Exists(ctx context.Context, artifact *Artifact, raw bool) (bool, error)
 
 	// Validate checks if the destination configuration is valid
 	Validate() error
