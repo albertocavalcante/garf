@@ -8,6 +8,8 @@ import (
 )
 
 func TestIsGitHubURL(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		url     string
@@ -33,6 +35,8 @@ func TestIsGitHubURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := core.IsGitHubURL(tt.url)
 			if tt.wantErr {
 				require.Error(t, err)
@@ -47,6 +51,8 @@ func TestIsGitHubURL(t *testing.T) {
 }
 
 func TestValidateGitHubURL(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		url     string
@@ -70,6 +76,8 @@ func TestValidateGitHubURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := core.ValidateGitHubURL(tt.url)
 			if tt.wantErr {
 				require.Error(t, err)

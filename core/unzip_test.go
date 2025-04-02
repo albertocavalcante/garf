@@ -11,6 +11,8 @@ import (
 )
 
 func TestIsZipFile(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		filePath string
@@ -45,6 +47,8 @@ func TestIsZipFile(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := core.IsZipFile(test.filePath)
 			require.Equal(t, test.expected, result)
 		})
@@ -94,17 +98,8 @@ func runZipExtractionTest(t *testing.T, test unzipTestCase, tempDir string) {
 }
 
 func TestExtractSingleFileFromZip(t *testing.T) {
-	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "zip-test-")
-	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	t.Parallel()
 
-	// Create a separate temp dir for extraction destination testing
-	extractDir, err := os.MkdirTemp("", "zip-extract-")
-	require.NoError(t, err)
-	defer os.RemoveAll(extractDir)
-
-	// Test cases
 	tests := []unzipTestCase{
 		{
 			name:          "single file zip",
@@ -115,9 +110,7 @@ func TestExtractSingleFileFromZip(t *testing.T) {
 			name:          "single file zip with custom destination",
 			fileCount:     1,
 			expectSuccess: true,
-			options: &core.ExtractOptions{
-				DestinationDir: extractDir,
-			},
+			options:       &core.ExtractOptions{},
 		},
 		{
 			name:           "multiple files zip",
@@ -142,7 +135,24 @@ func TestExtractSingleFileFromZip(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			runZipExtractionTest(t, test, tempDir)
+			t.Parallel()
+			// Create a temporary directory for this specific test
+			tempDir, err := os.MkdirTemp("", "zip-test-"+test.name+"-")
+			require.NoError(t, err)
+			t.Cleanup(func() { os.RemoveAll(tempDir) })
+
+			// Create a separate temp dir for extraction destination testing
+			extractDir, err := os.MkdirTemp("", "zip-extract-"+test.name+"-")
+			require.NoError(t, err)
+			t.Cleanup(func() { os.RemoveAll(extractDir) })
+
+			// Create a copy of the test case to modify
+			testCopy := test
+			if testCopy.options != nil {
+				testCopy.options.DestinationDir = extractDir
+			}
+
+			runZipExtractionTest(t, testCopy, tempDir)
 		})
 	}
 }
@@ -179,5 +189,6 @@ func createTestZip(t *testing.T, zipPath string, fileCount int, includeDir bool)
 }
 
 func TestUnzipFile(t *testing.T) {
+	t.Parallel()
 	// Test implementation goes here
 }

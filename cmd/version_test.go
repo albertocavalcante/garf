@@ -2,20 +2,26 @@ package cmd_test
 
 import (
 	"bytes"
+	"sync"
 	"testing"
 
 	"github.com/albertocavalcante/garf/cmd"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
 
-func TestVersionCmd(t *testing.T) {
-	tests := []struct {
-		name           string
-		version        string
-		commitHash     string
-		buildDate      string
-		expectedOutput string
-	}{
+var versionMutex sync.Mutex
+
+type versionTestCase struct {
+	name           string
+	version        string
+	commitHash     string
+	buildDate      string
+	expectedOutput string
+}
+
+func getVersionTestCases() []versionTestCase {
+	return []versionTestCase{
 		{
 			name:       "dev version",
 			version:    "dev",
@@ -37,34 +43,58 @@ Build Date: 2024-03-29
 `,
 		},
 	}
+}
+
+func setupVersionTest(t *testing.T, tc versionTestCase) (*cobra.Command, *bytes.Buffer, func()) {
+	t.Helper()
+
+	// Lock mutex before modifying global variables
+	versionMutex.Lock()
+
+	// Save original values
+	origVersion := cmd.Version
+	origCommitHash := cmd.CommitHash
+	origBuildDate := cmd.BuildDate
+
+	// Set test values
+	cmd.Version = tc.version
+	cmd.CommitHash = tc.commitHash
+	cmd.BuildDate = tc.buildDate
+
+	// Create a buffer to capture output
+	var buf bytes.Buffer
+
+	command := cmd.NewVersionCmd()
+	command.SetOut(&buf)
+
+	cleanup := func() {
+		versionMutex.Lock()
+		cmd.Version = origVersion
+		cmd.CommitHash = origCommitHash
+		cmd.BuildDate = origBuildDate
+		versionMutex.Unlock()
+	}
+
+	// Unlock mutex after setting values
+	versionMutex.Unlock()
+
+	return command, &buf, cleanup
+}
+
+func TestVersionCmd(t *testing.T) {
+	t.Parallel()
+
+	tests := getVersionTestCases()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save original values
-			origVersion := cmd.Version
-			origCommitHash := cmd.CommitHash
-			origBuildDate := cmd.BuildDate
+			t.Parallel()
 
-			// Set test values
-			cmd.Version = tt.version
-			cmd.CommitHash = tt.commitHash
-			cmd.BuildDate = tt.buildDate
-
-			// Restore original values after test
-			defer func() {
-				cmd.Version = origVersion
-				cmd.CommitHash = origCommitHash
-				cmd.BuildDate = origBuildDate
-			}()
-
-			// Create a buffer to capture output
-			var buf bytes.Buffer
-
-			cmd := cmd.NewVersionCmd()
-			cmd.SetOut(&buf)
+			command, buf, cleanup := setupVersionTest(t, tt)
+			t.Cleanup(cleanup)
 
 			// Execute the command
-			err := cmd.Execute()
+			err := command.Execute()
 			require.NoError(t, err)
 
 			// Check output

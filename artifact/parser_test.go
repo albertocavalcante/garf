@@ -26,6 +26,8 @@ func verifyCoordinates(t *testing.T, expected, actual *artifact.ArtifactCoordina
 }
 
 func TestExtractCoordinatesFromURL(t *testing.T) {
+	t.Parallel()
+
 	type testCase struct {
 		artifactURL         string
 		expectedCoordinates *artifact.ArtifactCoordinates
@@ -66,7 +68,10 @@ func TestExtractCoordinatesFromURL(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		// Capture range variable
 		t.Run(tc.artifactURL, func(t *testing.T) {
+			t.Parallel()
+
 			coordinates, err := artifact.ExtractCoordinatesFromURL(tc.artifactURL)
 
 			// Check error cases first

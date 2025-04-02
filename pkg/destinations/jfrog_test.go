@@ -146,7 +146,10 @@ func getValidationTestCases() []struct {
 
 func TestJFrogDestinationValidate(t *testing.T) {
 	t.Parallel()
+
 	env := setupTestEnv(t)
+	t.Cleanup(env.cleanup)
+
 	tests := getValidationTestCases()
 
 	for _, tt := range tests {
@@ -258,7 +261,7 @@ func TestJFrogDestinationURLHandling(t *testing.T) {
 	t.Parallel()
 
 	env := setupTestEnv(t)
-	defer env.cleanup()
+	t.Cleanup(env.cleanup)
 
 	tests := getURLHandlingTestCases()
 
@@ -266,8 +269,8 @@ func TestJFrogDestinationURLHandling(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			testEnv := setupTestEnv(t) // Create a new env for each subtest
-			defer testEnv.cleanup()
+			testEnv := setupTestEnv(t)
+			t.Cleanup(testEnv.cleanup)
 
 			testEnv.setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
@@ -353,7 +356,10 @@ func getTargetURLTestCases() []struct {
 
 func TestJFrogDestinationBuildTargetURL(t *testing.T) {
 	t.Parallel()
+
 	env := setupTestEnv(t)
+	t.Cleanup(env.cleanup)
+
 	tests := getTargetURLTestCases()
 
 	for _, tt := range tests {
@@ -423,7 +429,10 @@ func getExistsTestCases() []existsTestCase {
 
 func TestJFrogDestinationExists(t *testing.T) {
 	t.Parallel()
+
 	env := setupTestEnv(t)
+	t.Cleanup(env.cleanup)
+
 	env.setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodHead {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -439,15 +448,13 @@ func TestJFrogDestinationExists(t *testing.T) {
 		}
 	})
 
-	defer env.cleanup()
-
 	tests := getExistsTestCases()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			testEnv := setupTestEnv(t) // Create a new env for each subtest
-			defer testEnv.cleanup()
+			testEnv := setupTestEnv(t)
+			t.Cleanup(testEnv.cleanup)
 
 			testEnv.setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method != http.MethodHead {

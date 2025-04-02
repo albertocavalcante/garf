@@ -7,6 +7,8 @@ import (
 )
 
 func TestRef(t *testing.T) {
+	t.Parallel()
+
 	type T int
 
 	val := T(0)
@@ -25,6 +27,8 @@ func TestRef(t *testing.T) {
 }
 
 func TestDeref(t *testing.T) {
+	t.Parallel()
+
 	type T int
 
 	var val, def T = 1, 0

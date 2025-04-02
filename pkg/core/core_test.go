@@ -9,6 +9,8 @@ import (
 )
 
 func TestMirrorOptions(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name          string
 		opts          *core.MirrorOptions
@@ -51,6 +53,8 @@ func TestMirrorOptions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := tt.opts.Validate()
 			if tt.validateError {
 				require.Error(t, err)
@@ -64,13 +68,15 @@ func TestMirrorOptions(t *testing.T) {
 	}
 }
 
-func TestArtifact(t *testing.T) {
-	tests := []struct {
-		name          string
-		artifact      *core.Artifact
-		validate      func(*testing.T, *core.Artifact)
-		validateError bool
-	}{
+type artifactTestCase struct {
+	name          string
+	artifact      *core.Artifact
+	validate      func(*testing.T, *core.Artifact)
+	validateError bool
+}
+
+func getArtifactTestCases() []artifactTestCase {
+	return []artifactTestCase{
 		{
 			name: "valid artifact",
 			artifact: &core.Artifact{
@@ -108,9 +114,17 @@ func TestArtifact(t *testing.T) {
 			validateError: true,
 		},
 	}
+}
+
+func TestArtifact(t *testing.T) {
+	t.Parallel()
+
+	tests := getArtifactTestCases()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := tt.artifact.Validate()
 			if tt.validateError {
 				require.Error(t, err)

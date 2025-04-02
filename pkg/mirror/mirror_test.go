@@ -43,6 +43,8 @@ func (d *mockDestination) Validate() error {
 }
 
 func TestDefaultMirror(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name          string
 		validate      func(*testing.T, *mirror.DefaultMirror)
@@ -59,6 +61,8 @@ func TestDefaultMirror(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			mirror := mirror.NewDefaultMirror(nil)
 			tt.validate(t, mirror)
 		})
@@ -74,6 +78,8 @@ type testCase[T any] struct {
 
 func runTest[T any](t *testing.T, tt testCase[T], testFn func(*mirror.DefaultMirror, T) error) {
 	t.Run(tt.name, func(t *testing.T) {
+		t.Parallel()
+
 		mirror := mirror.NewDefaultMirror(nil)
 
 		err := testFn(mirror, tt.input)
@@ -94,6 +100,8 @@ type sourceInput struct {
 }
 
 func TestDefaultMirrorAddSource(t *testing.T) {
+	t.Parallel()
+
 	tests := []testCase[sourceInput]{
 		{
 			name: "valid source",
@@ -132,6 +140,8 @@ type destinationInput struct {
 }
 
 func TestDefaultMirrorAddDestination(t *testing.T) {
+	t.Parallel()
+
 	tests := []testCase[destinationInput]{
 		{
 			name: "valid destination",
@@ -170,6 +180,8 @@ type mirrorInput struct {
 }
 
 func TestDefaultMirrorMirror(t *testing.T) {
+	t.Parallel()
+
 	tests := []testCase[mirrorInput]{
 		{
 			name: "valid mirror",
@@ -196,6 +208,8 @@ func TestDefaultMirrorMirror(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			mirror := mirror.NewDefaultMirror(nil)
 
 			results := mirror.Mirror(tt.input.opts.Context, tt.input.artifacts, tt.input.opts)

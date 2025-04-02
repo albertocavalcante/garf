@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/albertocavalcante/garf/cmd"
@@ -18,6 +19,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
+
+var envMutex sync.Mutex
 
 // testEnv holds test environment configuration.
 type testEnv struct {
@@ -209,16 +212,20 @@ func buildArgs(tc testCase, configPath string) []string {
 
 // Helper functions for environment management.
 func saveEnvironment(vars map[string]string) map[string]string {
+	envMutex.Lock()
+
 	env := make(map[string]string)
 	for key := range vars {
 		env[key] = os.Getenv(key)
 		os.Setenv(key, vars[key])
 	}
+	envMutex.Unlock()
 
 	return env
 }
 
 func restoreEnvironment(env map[string]string) {
+	envMutex.Lock()
 	for key, value := range env {
 		if value == "" {
 			os.Unsetenv(key)
@@ -226,6 +233,7 @@ func restoreEnvironment(env map[string]string) {
 			os.Setenv(key, value)
 		}
 	}
+	envMutex.Unlock()
 }
 
 // mockHTTPClient is a mock HTTP client that returns predefined responses.
@@ -276,8 +284,10 @@ func (m *mockDestination) Put(ctx context.Context, artifact *core.Artifact, read
 
 // Test functions.
 func TestMirrorCmdRequiredFlags(t *testing.T) {
+	t.Parallel()
+
 	env := setupTestEnv(t)
-	defer env.cleanup()
+	t.Cleanup(env.cleanup)
 
 	testCases := []testCase{
 		{
@@ -308,15 +318,17 @@ func TestMirrorCmdRequiredFlags(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			cmd := setupCommand(t, commandConfig{testCase: tc}, env)
+		tt := tc // Capture range variable
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := setupCommand(t, commandConfig{testCase: tt}, env)
 			err := cmd.Execute()
 
-			if tc.wantErr {
+			if tt.wantErr {
 				require.Error(t, err)
 
-				if tc.errMsg != "" {
-					require.Contains(t, err.Error(), tc.errMsg)
+				if tt.errMsg != "" {
+					require.Contains(t, err.Error(), tt.errMsg)
 				}
 
 				return
@@ -328,6 +340,11 @@ func TestMirrorCmdRequiredFlags(t *testing.T) {
 }
 
 func TestMirrorCmdFlagRegistration(t *testing.T) {
+	t.Parallel()
+
+	env := setupTestEnv(t)
+	t.Cleanup(env.cleanup)
+
 	expectedFlags := []string{
 		"config", "source", "destination", "from-file",
 		"raw", "properties", "unzip", "dry-run",
@@ -345,48 +362,94 @@ func TestMirrorCmdFlagRegistration(t *testing.T) {
 	})
 }
 
-func TestMirrorFlagsValidation(t *testing.T) {
-	tests := []struct {
+// getFlagsValidationTestCases returns test cases for flag validation.
+func getFlagsValidationTestCases() []struct {
+	name      string
+	testCase  testCase
+	wantError bool
+} {
+	return []struct {
 		name      string
-		flags     *cmd.MirrorFlags
+		testCase  testCase
 		wantError bool
 	}{
 		{
 			name: "valid dry run mode all",
-			flags: &cmd.MirrorFlags{
-				DryRun:     true,
-				DryRunMode: "all",
+			testCase: testCase{
+				source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.tar.gz",
+				destination: "repo-local",
+				useConfig:   true,
 			},
 		},
 		{
 			name: "valid dry run mode upload",
-			flags: &cmd.MirrorFlags{
-				DryRun:     true,
-				DryRunMode: "upload",
+			testCase: testCase{
+				source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.tar.gz",
+				destination: "repo-local",
+				useConfig:   true,
 			},
 		},
 		{
 			name: "invalid dry run mode",
-			flags: &cmd.MirrorFlags{
-				DryRun:     true,
-				DryRunMode: "invalid",
+			testCase: testCase{
+				source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.tar.gz",
+				destination: "repo-local",
+				useConfig:   true,
 			},
 			wantError: true,
 		},
 		{
 			name: "no dry run - no validation needed",
-			flags: &cmd.MirrorFlags{
-				DryRun:     false,
-				DryRunMode: "invalid",
+			testCase: testCase{
+				source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.tar.gz",
+				destination: "repo-local",
+				useConfig:   true,
 			},
 		},
 	}
+}
+
+// setupFlagsForTest configures flags based on the test case.
+func setupFlagsForTest(flags *cmd.MirrorFlags, testName string) {
+	switch testName {
+	case "invalid dry run mode":
+		flags.DryRunMode = "invalid"
+	case "valid dry run mode upload":
+		flags.DryRunMode = "upload"
+	case "no dry run - no validation needed":
+		flags.DryRun = false
+		flags.DryRunMode = "invalid"
+	}
+}
+
+func TestMirrorFlagsValidation(t *testing.T) {
+	t.Parallel()
+
+	env := setupTestEnv(t)
+	t.Cleanup(env.cleanup)
+
+	tests := getFlagsValidationTestCases()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.flags.ValidateDryRunMode()
+			t.Parallel()
+
+			flags := &cmd.MirrorFlags{
+				TestMirror:  env.mirror,
+				DryRun:      true,
+				DryRunMode:  "all",
+				Source:      tt.testCase.source,
+				Destination: tt.testCase.destination,
+			}
+
+			setupFlagsForTest(flags, tt.name)
+
+			cmd := setupCommand(t, commandConfig{flags: flags, testCase: tt.testCase}, env)
+			err := cmd.Execute()
+
 			if tt.wantError {
 				require.Error(t, err)
+				require.Contains(t, err.Error(), "invalid dry run mode")
 
 				return
 			}
@@ -397,8 +460,10 @@ func TestMirrorFlagsValidation(t *testing.T) {
 }
 
 func TestGetConfig(t *testing.T) {
+	t.Parallel()
+
 	env := setupTestEnv(t)
-	defer env.cleanup()
+	t.Cleanup(env.cleanup)
 
 	testCases := []struct {
 		name         string
@@ -432,10 +497,14 @@ func TestGetConfig(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		// Capture range variable
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			if tc.envVars != nil {
 				origEnv := saveEnvironment(tc.envVars)
-				defer restoreEnvironment(origEnv)
+
+				t.Cleanup(func() { restoreEnvironment(origEnv) })
 			}
 
 			flags := &cmd.MirrorFlags{

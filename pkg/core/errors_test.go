@@ -64,8 +64,13 @@ var testCases = []testCase{
 }
 
 func TestErrorGroup(t *testing.T) {
+	t.Parallel()
+
 	for _, tt := range testCases {
+		// Capture range variable
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			g := core.NewErrorGroup()
 			for _, err := range tt.errors {
 				g.Add(err)
