@@ -5,7 +5,8 @@ alwaysApply: true
 ---
 # Go
 
-- When resolving a linter error, always execute the correspondign unit tests before proceeding to the next linter fix.
+## General Practices
+- When resolving a linter error, always execute the corresponding unit tests before proceeding to the next linter fix.
 - NEVER change manually `go.mod` and `go.sum`, unless explicitly authorized or instructed.
 - AVOID using the local `go` installation on the host machine. PREFER to use `rules_go` Go SDK. Example:
 
@@ -21,10 +22,25 @@ Instead of:
 go mod tidy -v
 ```
 
+## Code Organization
 - ALWAYS consider refactoring a function.
 - AVOID increasing the scope of a function, prefer to create another one instead.
 - Write idiomatic Go. Follow Go proverbs.
 - ALWAYS write unit tests and make code testable.
+- Group related types and functions together.
+- Keep functions focused and small.
+
+## Testing Best Practices
+- Use table-driven tests for similar test cases.
+- Make tests run in parallel when possible using `t.Parallel()`.
+- Create dedicated test types for better organization (e.g., `testCase`, `testEnv`).
+- Use helper functions to reduce duplication and improve maintainability.
+- Ensure proper cleanup of test resources using `defer`.
+- Protect shared resources with mutexes in parallel tests.
+- Create isolated test environments for each test when running in parallel.
+- Use descriptive test case names that explain the scenario being tested.
+- Group test cases by functionality using separate functions.
+- For Go 1.22+ modules, loop variable captures (`x := x`) are not needed.
 
 ## Libraries
 
@@ -39,3 +55,6 @@ go mod tidy -v
 - Once you are done with code changes, run `make test` and confirm all unit tests are passing.
 - Once all unit tests are passing, execute `make lint` and fix the findings before finishing it.
 - Repeat this process until both pass.
+- When fixing linter issues, prefer refactoring to improve code quality rather than just satisfying the linter.
+- Consider extracting long functions into smaller, more focused functions.
+- Use meaningful names for extracted functions that describe their purpose.
