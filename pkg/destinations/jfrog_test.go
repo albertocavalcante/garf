@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/albertocavalcante/garf/pkg/core"
@@ -19,6 +20,7 @@ type testEnv struct {
 	server     *httptest.Server
 	config     destinations.JFrogConfig
 	artifact   *core.Artifact
+	mu         sync.Mutex // Protects lastPath and lastMethod
 	lastPath   string
 	lastMethod string
 }
@@ -57,8 +59,10 @@ func setupTestEnv(t *testing.T) *testEnv {
 // setupTestServer creates a test server with the given handler.
 func (env *testEnv) setupTestServer(handler http.HandlerFunc) {
 	env.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		env.mu.Lock()
 		env.lastPath = r.URL.Path
 		env.lastMethod = r.Method
+		env.mu.Unlock()
 
 		// Check authentication
 		user, pass, ok := r.BasicAuth()
@@ -72,6 +76,14 @@ func (env *testEnv) setupTestServer(handler http.HandlerFunc) {
 	}))
 
 	env.config.URL = env.server.URL
+}
+
+// getLastRequest returns the last request's path and method.
+func (env *testEnv) getLastRequest() (path, method string) {
+	env.mu.Lock()
+	defer env.mu.Unlock()
+
+	return env.lastPath, env.lastMethod
 }
 
 // cleanup performs test environment cleanup.
@@ -241,28 +253,28 @@ func getURLHandlingTestCases() []urlHandlingTestCase {
 
 func TestJFrogDestinationURLHandling(t *testing.T) {
 	env := setupTestEnv(t)
-	env.setupTestServer(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusCreated)
-	})
 	defer env.cleanup()
 
 	tests := getURLHandlingTestCases()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := env.config
-			config.DestPath = tt.destPath
+			env.setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
 
-			if tt.wantErr {
-				config.URL = "://invalid-url"
-			}
-
-			artifact := *env.artifact // Create a copy
+			env.config.DestPath = tt.destPath
 			if tt.modifyArt != nil {
-				tt.modifyArt(&artifact)
+				tt.modifyArt(env.artifact)
 			}
 
-			dest := destinations.NewJFrogDestination(config, env.logger)
-			err := dest.Put(context.Background(), &artifact, strings.NewReader("test content"), tt.raw)
+			// Set invalid URL for error test cases
+			if tt.wantErr {
+				env.config.URL = "://invalid-url"
+			}
+
+			dest := destinations.NewJFrogDestination(env.config, env.logger)
+			err := dest.Put(context.Background(), env.artifact, strings.NewReader("test content"), tt.raw)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -273,8 +285,9 @@ func TestJFrogDestinationURLHandling(t *testing.T) {
 
 			require.NoError(t, err)
 
+			lastPath, _ := env.getLastRequest()
 			for _, check := range tt.pathChecks {
-				require.Contains(t, env.lastPath, check)
+				require.Contains(t, lastPath, check)
 			}
 		})
 	}
