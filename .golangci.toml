@@ -48,7 +48,6 @@ disable = [
     'sqlclosecheck',
     'tagliatelle',
     'thelper',
-    'tparallel',
     'unconvert',
     'unparam',
     'usetesting',
