@@ -145,11 +145,14 @@ func getValidationTestCases() []struct {
 }
 
 func TestJFrogDestinationValidate(t *testing.T) {
+	t.Parallel()
 	env := setupTestEnv(t)
 	tests := getValidationTestCases()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			config := env.config
 			tt.modifyConf(&config)
 			dest := destinations.NewJFrogDestination(config, env.logger)
@@ -252,6 +255,8 @@ func getURLHandlingTestCases() []urlHandlingTestCase {
 }
 
 func TestJFrogDestinationURLHandling(t *testing.T) {
+	t.Parallel()
+
 	env := setupTestEnv(t)
 	defer env.cleanup()
 
@@ -259,22 +264,27 @@ func TestJFrogDestinationURLHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			env.setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+			t.Parallel()
+
+			testEnv := setupTestEnv(t) // Create a new env for each subtest
+			defer testEnv.cleanup()
+
+			testEnv.setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			})
 
-			env.config.DestPath = tt.destPath
+			testEnv.config.DestPath = tt.destPath
 			if tt.modifyArt != nil {
-				tt.modifyArt(env.artifact)
+				tt.modifyArt(testEnv.artifact)
 			}
 
 			// Set invalid URL for error test cases
 			if tt.wantErr {
-				env.config.URL = "://invalid-url"
+				testEnv.config.URL = "://invalid-url"
 			}
 
-			dest := destinations.NewJFrogDestination(env.config, env.logger)
-			err := dest.Put(context.Background(), env.artifact, strings.NewReader("test content"), tt.raw)
+			dest := destinations.NewJFrogDestination(testEnv.config, testEnv.logger)
+			err := dest.Put(context.Background(), testEnv.artifact, strings.NewReader("test content"), tt.raw)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -285,7 +295,7 @@ func TestJFrogDestinationURLHandling(t *testing.T) {
 
 			require.NoError(t, err)
 
-			lastPath, _ := env.getLastRequest()
+			lastPath, _ := testEnv.getLastRequest()
 			for _, check := range tt.pathChecks {
 				require.Contains(t, lastPath, check)
 			}
@@ -342,11 +352,14 @@ func getTargetURLTestCases() []struct {
 }
 
 func TestJFrogDestinationBuildTargetURL(t *testing.T) {
+	t.Parallel()
 	env := setupTestEnv(t)
 	tests := getTargetURLTestCases()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			config := env.config
 			tt.modifyConf(&config)
 
@@ -409,6 +422,7 @@ func getExistsTestCases() []existsTestCase {
 }
 
 func TestJFrogDestinationExists(t *testing.T) {
+	t.Parallel()
 	env := setupTestEnv(t)
 	env.setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodHead {
@@ -424,15 +438,36 @@ func TestJFrogDestinationExists(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	})
+
 	defer env.cleanup()
 
 	tests := getExistsTestCases()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			artifact := *env.artifact // Create a copy
+			t.Parallel()
+
+			testEnv := setupTestEnv(t) // Create a new env for each subtest
+			defer testEnv.cleanup()
+
+			testEnv.setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodHead {
+					w.WriteHeader(http.StatusMethodNotAllowed)
+
+					return
+				}
+
+				// The path should match what PathBuilder generates
+				if strings.Contains(r.URL.Path, "/artifactory/generic-local/github.com/example/repo/v1.0.0/test-artifact.zip") {
+					w.WriteHeader(http.StatusOK)
+				} else {
+					w.WriteHeader(http.StatusNotFound)
+				}
+			})
+
+			artifact := *testEnv.artifact // Create a copy
 			tt.modifyArt(&artifact)
 
-			dest := destinations.NewJFrogDestination(env.config, env.logger)
+			dest := destinations.NewJFrogDestination(testEnv.config, testEnv.logger)
 			exists, err := dest.Exists(context.Background(), &artifact, false)
 
 			if tt.wantErr {
