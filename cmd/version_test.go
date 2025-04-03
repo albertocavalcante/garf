@@ -2,11 +2,15 @@ package cmd_test
 
 import (
 	"bytes"
+	"sync"
 	"testing"
 
-	"github.com/spf13/cobra"
+	"github.com/albertocavalcante/garf/cmd"
 	"github.com/stretchr/testify/require"
 )
+
+// Global mutex to protect access to cmd.Version, cmd.CommitHash, and cmd.BuildDate
+var versionMutex sync.Mutex
 
 type versionTestCase struct {
 	name           string
@@ -14,29 +18,6 @@ type versionTestCase struct {
 	commitHash     string
 	buildDate      string
 	expectedOutput string
-}
-
-// setupVersionTest creates an isolated environment for testing the version command
-func setupVersionTest(t *testing.T, tc versionTestCase) *cobra.Command {
-	t.Helper()
-
-	// Create a custom version command that uses the test case values directly
-	// This avoids modifying any package-level variables
-	command := &cobra.Command{
-		Use:   "version",
-		Short: "Print the version information",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			out := cmd.OutOrStdout()
-			// Use the test case values directly instead of global variables
-			// This ensures test isolation even when running in parallel
-			out.Write([]byte("Version: " + tc.version + "\n"))
-			out.Write([]byte("Commit: " + tc.commitHash + "\n"))
-			out.Write([]byte("Build Date: " + tc.buildDate + "\n"))
-			return nil
-		},
-	}
-
-	return command
 }
 
 func TestVersionCmd(t *testing.T) {
@@ -65,24 +46,51 @@ Build Date: 2024-03-29
 		},
 	}
 
-	for _, tt := range tests {
-		tc := tt // capture for Go < 1.22
+	// Create a channel to ensure tests run sequentially while allowing Go test parallelism
+	testChannel := make(chan struct{}, 1)
+	testChannel <- struct{}{} // Initialize with one token
+
+	for _, tc := range tests {
+		tc := tc // capture for Go < 1.22
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
+			// Get token from channel to ensure only one test runs at a time
+			token := <-testChannel
+			defer func() { testChannel <- token }()
+
+			// Save original values
+			versionMutex.Lock()
+			origVersion := cmd.Version
+			origCommitHash := cmd.CommitHash
+			origBuildDate := cmd.BuildDate
+
+			// Set test values
+			cmd.Version = tc.version
+			cmd.CommitHash = tc.commitHash
+			cmd.BuildDate = tc.buildDate
+			versionMutex.Unlock()
 
 			// Create a buffer to capture output
 			var buf bytes.Buffer
 
-			// Get an isolated test command
-			cmd := setupVersionTest(t, tc)
-			cmd.SetOut(&buf)
+			// Use the actual NewVersionCmd
+			command := cmd.NewVersionCmd()
+			command.SetOut(&buf)
 
 			// Execute the command
-			err := cmd.Execute()
+			err := command.Execute()
 			require.NoError(t, err)
 
 			// Check output
 			require.Equal(t, tc.expectedOutput, buf.String())
+
+			// Restore original values
+			versionMutex.Lock()
+			cmd.Version = origVersion
+			cmd.CommitHash = origCommitHash
+			cmd.BuildDate = origBuildDate
+			versionMutex.Unlock()
 		})
 	}
 }
