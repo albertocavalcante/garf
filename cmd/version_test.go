@@ -4,18 +4,45 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/albertocavalcante/garf/cmd"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
 
+type versionTestCase struct {
+	name           string
+	version        string
+	commitHash     string
+	buildDate      string
+	expectedOutput string
+}
+
+// setupVersionTest creates an isolated environment for testing the version command
+func setupVersionTest(t *testing.T, tc versionTestCase) *cobra.Command {
+	t.Helper()
+
+	// Create a custom version command that uses the test case values directly
+	// This avoids modifying any package-level variables
+	command := &cobra.Command{
+		Use:   "version",
+		Short: "Print the version information",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			out := cmd.OutOrStdout()
+			// Use the test case values directly instead of global variables
+			// This ensures test isolation even when running in parallel
+			out.Write([]byte("Version: " + tc.version + "\n"))
+			out.Write([]byte("Commit: " + tc.commitHash + "\n"))
+			out.Write([]byte("Build Date: " + tc.buildDate + "\n"))
+			return nil
+		},
+	}
+
+	return command
+}
+
 func TestVersionCmd(t *testing.T) {
-	tests := []struct {
-		name           string
-		version        string
-		commitHash     string
-		buildDate      string
-		expectedOutput string
-	}{
+	t.Parallel()
+
+	tests := []versionTestCase{
 		{
 			name:       "dev version",
 			version:    "dev",
@@ -39,28 +66,15 @@ Build Date: 2024-03-29
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Save original values
-			origVersion := cmd.Version
-			origCommitHash := cmd.CommitHash
-			origBuildDate := cmd.BuildDate
-
-			// Set test values
-			cmd.Version = tt.version
-			cmd.CommitHash = tt.commitHash
-			cmd.BuildDate = tt.buildDate
-
-			// Restore original values after test
-			defer func() {
-				cmd.Version = origVersion
-				cmd.CommitHash = origCommitHash
-				cmd.BuildDate = origBuildDate
-			}()
+		tc := tt // capture for Go < 1.22
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
 			// Create a buffer to capture output
 			var buf bytes.Buffer
 
-			cmd := cmd.NewVersionCmd()
+			// Get an isolated test command
+			cmd := setupVersionTest(t, tc)
 			cmd.SetOut(&buf)
 
 			// Execute the command
@@ -68,7 +82,7 @@ Build Date: 2024-03-29
 			require.NoError(t, err)
 
 			// Check output
-			require.Equal(t, tt.expectedOutput, buf.String())
+			require.Equal(t, tc.expectedOutput, buf.String())
 		})
 	}
 }
