@@ -2,20 +2,28 @@ package cmd_test
 
 import (
 	"bytes"
+	"sync"
 	"testing"
 
 	"github.com/albertocavalcante/garf/cmd"
 	"github.com/stretchr/testify/require"
 )
 
+// Global mutex to protect access to cmd.Version, cmd.CommitHash, and cmd.BuildDate
+var versionMutex sync.Mutex
+
+type versionTestCase struct {
+	name           string
+	version        string
+	commitHash     string
+	buildDate      string
+	expectedOutput string
+}
+
 func TestVersionCmd(t *testing.T) {
-	tests := []struct {
-		name           string
-		version        string
-		commitHash     string
-		buildDate      string
-		expectedOutput string
-	}{
+	t.Parallel()
+
+	tests := []versionTestCase{
 		{
 			name:       "dev version",
 			version:    "dev",
@@ -38,37 +46,51 @@ Build Date: 2024-03-29
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	// Create a channel to ensure tests run sequentially while allowing Go test parallelism
+	testChannel := make(chan struct{}, 1)
+	testChannel <- struct{}{} // Initialize with one token
+
+	for _, tc := range tests {
+		tc := tc // capture for Go < 1.22
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Get token from channel to ensure only one test runs at a time
+			token := <-testChannel
+			defer func() { testChannel <- token }()
+
 			// Save original values
+			versionMutex.Lock()
 			origVersion := cmd.Version
 			origCommitHash := cmd.CommitHash
 			origBuildDate := cmd.BuildDate
 
 			// Set test values
-			cmd.Version = tt.version
-			cmd.CommitHash = tt.commitHash
-			cmd.BuildDate = tt.buildDate
-
-			// Restore original values after test
-			defer func() {
-				cmd.Version = origVersion
-				cmd.CommitHash = origCommitHash
-				cmd.BuildDate = origBuildDate
-			}()
+			cmd.Version = tc.version
+			cmd.CommitHash = tc.commitHash
+			cmd.BuildDate = tc.buildDate
+			versionMutex.Unlock()
 
 			// Create a buffer to capture output
 			var buf bytes.Buffer
 
-			cmd := cmd.NewVersionCmd()
-			cmd.SetOut(&buf)
+			// Use the actual NewVersionCmd
+			command := cmd.NewVersionCmd()
+			command.SetOut(&buf)
 
 			// Execute the command
-			err := cmd.Execute()
+			err := command.Execute()
 			require.NoError(t, err)
 
 			// Check output
-			require.Equal(t, tt.expectedOutput, buf.String())
+			require.Equal(t, tc.expectedOutput, buf.String())
+
+			// Restore original values
+			versionMutex.Lock()
+			cmd.Version = origVersion
+			cmd.CommitHash = origCommitHash
+			cmd.BuildDate = origBuildDate
+			versionMutex.Unlock()
 		})
 	}
 }
