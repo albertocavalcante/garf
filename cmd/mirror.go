@@ -2,7 +2,11 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -286,7 +290,7 @@ func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
 		return nil, err
 	}
 
-	jfrogUser, jfrogPassword, err := getJFrogCredentials(flags, v)
+	jfrogUser, jfrogPassword, err := getJFrogCredentials(jfrogURL, flags, v)
 	if err != nil {
 		return nil, err
 	}
@@ -338,8 +342,8 @@ func getJFrogURL(flags *MirrorFlags, v *viper.Viper) (string, error) {
 	return jfrogURL, nil
 }
 
-// getJFrogCredentials retrieves JFrog credentials from flags or environment.
-func getJFrogCredentials(flags *MirrorFlags, v *viper.Viper) (string, string, error) {
+// getJFrogCredentials retrieves JFrog credentials from flags, environment variables, or .netrc.
+func getJFrogCredentials(jfrogURL string, flags *MirrorFlags, v *viper.Viper) (string, string, error) {
 	// Get username
 	jfrogUser := flags.JFrogUser
 	if jfrogUser == "" {
@@ -362,7 +366,26 @@ func getJFrogCredentials(flags *MirrorFlags, v *viper.Viper) (string, string, er
 		jfrogPassword = password
 	}
 
-	// Validate
+	// If either user or password is still empty, attempt to read from .netrc.
+	if jfrogUser == "" || jfrogPassword == "" {
+		host, err := extractHostFromURL(jfrogURL)
+		if err != nil {
+			return "", "", err
+		}
+
+		if u, p, ok, err := readNetrcCredentials(host); err == nil && ok {
+			if jfrogUser == "" {
+				jfrogUser = u
+			}
+			if jfrogPassword == "" {
+				jfrogPassword = p
+			}
+		} else if err != nil {
+			return "", "", err
+		}
+	}
+
+	// Validate: credentials must be present after all attempts
 	if jfrogUser == "" {
 		return "", "", fmt.Errorf("JFrog user is required")
 	}
@@ -372,6 +395,68 @@ func getJFrogCredentials(flags *MirrorFlags, v *viper.Viper) (string, string, er
 	}
 
 	return jfrogUser, jfrogPassword, nil
+}
+
+// extractHostFromURL parses the provided URL string and returns the host without scheme.
+func extractHostFromURL(rawURL string) (string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse JFrog URL: %w", err)
+	}
+	return parsed.Host, nil
+}
+
+// readNetrcCredentials attempts to read credentials for the given host from a .netrc file.
+// It returns username, password, whether they were found, and an error if one occurred while reading.
+func readNetrcCredentials(host string) (string, string, bool, error) {
+	// Determine netrc file path: respect NETRC or HOME environment variables.
+	netrcPath := os.Getenv("NETRC")
+	if netrcPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", "", false, err
+		}
+		netrcPath = filepath.Join(home, ".netrc")
+	}
+
+	data, err := os.ReadFile(netrcPath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", "", false, nil // No netrc file; not an error.
+		}
+		return "", "", false, err
+	}
+
+	tokens := strings.Fields(string(data))
+	var currentMachine string
+	var login, password string
+	for i := 0; i < len(tokens); i++ {
+		switch tokens[i] {
+		case "machine":
+			if i+1 < len(tokens) {
+				currentMachine = tokens[i+1]
+				login = ""
+				password = ""
+				i++
+			}
+		case "login":
+			if currentMachine == host && i+1 < len(tokens) {
+				login = tokens[i+1]
+				i++
+			}
+		case "password":
+			if currentMachine == host && i+1 < len(tokens) {
+				password = tokens[i+1]
+				i++
+			}
+		}
+
+		if currentMachine == host && login != "" && password != "" {
+			return login, password, true, nil
+		}
+	}
+
+	return "", "", false, nil
 }
 
 // setupLogger creates and configures a logger.
