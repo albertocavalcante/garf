@@ -67,10 +67,7 @@ func TestGetJFrogCredentialsPrecedence(t *testing.T) {
 	v.SetEnvPrefix("JFROG")
 	v.AutomaticEnv()
 
-	user, pass, err := func() (string, string, error) {
-		u, p, err := getJFrogCredentials(jfrogURL, flags, v)
-		return u, p, err
-	}()
+	user, pass, err := getJFrogCredentials(jfrogURL, flags, v)
 
 	require.NoError(t, err)
 	require.Equal(t, "netrcuser", user)
