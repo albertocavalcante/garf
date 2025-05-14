@@ -3,7 +3,7 @@ module github.com/albertocavalcante/garf
 go 1.23.7
 
 require (
-	github.com/jfrog/jfrog-client-go v1.52.0
+	github.com/jfrog/jfrog-client-go v1.53.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
@@ -35,7 +35,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jfrog/archiver/v3 v3.6.1 // indirect
-	github.com/jfrog/build-info-go v1.10.10 // indirect
+	github.com/jfrog/build-info-go v1.10.11 // indirect
 	github.com/jfrog/gofrog v1.7.6 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
