@@ -1,0 +1,17 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "netrc",
+    srcs = ["netrc.go"],
+    importpath = "github.com/albertocavalcante/garf/pkg/netrc",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "netrc_test",
+    srcs = ["netrc_test.go"],
+    embed = [":netrc"],
+    deps = [
+        "@com_github_stretchr_testify//require",
+    ],
+)
