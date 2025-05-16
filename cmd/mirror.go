@@ -2,11 +2,8 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io/fs"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -15,6 +12,7 @@ import (
 	"github.com/albertocavalcante/garf/pkg/core/config"
 	"github.com/albertocavalcante/garf/pkg/io"
 	"github.com/albertocavalcante/garf/pkg/mirror"
+	"github.com/albertocavalcante/garf/pkg/netrc"
 	"github.com/albertocavalcante/garf/pkg/processor"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -373,15 +371,20 @@ func getJFrogCredentials(jfrogURL string, flags *MirrorFlags, v *viper.Viper) (s
 			return "", "", err
 		}
 
-		if u, p, ok, err := readNetrcCredentials(host); err == nil && ok {
+		// Use the netrc package to get credentials
+		creds, found, err := netrc.GetHostCredentials(host)
+		if err != nil && jfrogUser == "" && jfrogPassword == "" {
+			// Only propagate .netrc errors if we have no other source of credentials
+			return "", "", err
+		}
+
+		if found {
 			if jfrogUser == "" {
-				jfrogUser = u
+				jfrogUser = creds.Login
 			}
 			if jfrogPassword == "" {
-				jfrogPassword = p
+				jfrogPassword = creds.Password
 			}
-		} else if err != nil {
-			return "", "", err
 		}
 	}
 
@@ -404,59 +407,6 @@ func extractHostFromURL(rawURL string) (string, error) {
 		return "", fmt.Errorf("failed to parse JFrog URL: %w", err)
 	}
 	return parsed.Host, nil
-}
-
-// readNetrcCredentials attempts to read credentials for the given host from a .netrc file.
-// It returns username, password, whether they were found, and an error if one occurred while reading.
-func readNetrcCredentials(host string) (string, string, bool, error) {
-	// Determine netrc file path: respect NETRC or HOME environment variables.
-	netrcPath := os.Getenv("NETRC")
-	if netrcPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", "", false, err
-		}
-		netrcPath = filepath.Join(home, ".netrc")
-	}
-
-	data, err := os.ReadFile(netrcPath)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return "", "", false, nil // No netrc file; not an error.
-		}
-		return "", "", false, err
-	}
-
-	tokens := strings.Fields(string(data))
-	var currentMachine string
-	var login, password string
-	for i := 0; i < len(tokens); i++ {
-		switch tokens[i] {
-		case "machine":
-			if i+1 < len(tokens) {
-				currentMachine = tokens[i+1]
-				login = ""
-				password = ""
-				i++
-			}
-		case "login":
-			if currentMachine == host && i+1 < len(tokens) {
-				login = tokens[i+1]
-				i++
-			}
-		case "password":
-			if currentMachine == host && i+1 < len(tokens) {
-				password = tokens[i+1]
-				i++
-			}
-		}
-
-		if currentMachine == host && login != "" && password != "" {
-			return login, password, true, nil
-		}
-	}
-
-	return "", "", false, nil
 }
 
 // setupLogger creates and configures a logger.
