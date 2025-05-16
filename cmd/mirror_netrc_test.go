@@ -18,126 +18,105 @@ func createTemporaryNetrc(t *testing.T, content string) string {
 	return file
 }
 
-func TestGetJFrogCredentialsPrecedence(t *testing.T) {
-	// Save original environment variables
-	origUser := os.Getenv("JFROG_USER")
-	origPass := os.Getenv("JFROG_PASSWORD")
-	origNetrc := os.Getenv("NETRC")
-	origHome := os.Getenv("HOME")
-
-	// Clean up environment variables to avoid interference
-	os.Unsetenv("JFROG_USER")
-	os.Unsetenv("JFROG_PASSWORD")
-	os.Setenv("HOME", t.TempDir()) // Set HOME to a writable directory for tests
-
-	defer func() {
-		// Restore original values
-		if origUser != "" {
-			os.Setenv("JFROG_USER", origUser)
+// Helper to save and restore environment variables
+func withEnv(t *testing.T, env map[string]string, fn func()) {
+	t.Helper()
+	// Save originals
+	orig := map[string]string{}
+	for k := range env {
+		orig[k] = os.Getenv(k)
+		if env[k] == "" {
+			os.Unsetenv(k)
+		} else {
+			os.Setenv(k, env[k])
 		}
-		if origPass != "" {
-			os.Setenv("JFROG_PASSWORD", origPass)
+	}
+	t.Cleanup(func() {
+		for k, v := range orig {
+			if v == "" {
+				os.Unsetenv(k)
+			} else {
+				os.Setenv(k, v)
+			}
 		}
-		if origNetrc != "" {
-			os.Setenv("NETRC", origNetrc)
-		}
-		if origHome != "" {
-			os.Setenv("HOME", origHome)
-		}
-	}()
-
-	flags := &MirrorFlags{}
-	jfrogURL := "https://art.example.com/artifactory"
-
-	// Prepare .netrc credentials
-	netrcContent := "machine art.example.com login netrcuser password netrcpass\n"
-	netrcPath := createTemporaryNetrc(t, netrcContent)
-	os.Setenv("NETRC", netrcPath)
-
-	v := viper.New()
-	v.SetEnvPrefix("JFROG")
-	v.AutomaticEnv()
-
-	user, pass, err := getJFrogCredentials(jfrogURL, flags, v)
-
-	require.NoError(t, err)
-	require.Equal(t, "netrcuser", user)
-	require.Equal(t, "netrcpass", pass)
-
-	// Test precedence: environment variables should override netrc
-	os.Setenv("JFROG_USER", "envuser")
-	os.Setenv("JFROG_PASSWORD", "envpass")
-
-	user, pass, err = getJFrogCredentials(jfrogURL, flags, v)
-	require.NoError(t, err)
-	require.Equal(t, "envuser", user)
-	require.Equal(t, "envpass", pass)
-
-	// Test precedence: flags should override environment variables
-	flags.JFrogUser = "flaguser"
-	flags.JFrogPassword = "flagpass"
-
-	user, pass, err = getJFrogCredentials(jfrogURL, flags, v)
-	require.NoError(t, err)
-	require.Equal(t, "flaguser", user)
-	require.Equal(t, "flagpass", pass)
+	})
+	fn()
 }
 
-func TestGetJFrogCredentialsErrorHandling(t *testing.T) {
-	// Save original environment variables
-	origUser := os.Getenv("JFROG_USER")
-	origPass := os.Getenv("JFROG_PASSWORD")
-	origNetrc := os.Getenv("NETRC")
-	origHome := os.Getenv("HOME")
+func TestGetJFrogCredentialsPrecedenceAndErrors(t *testing.T) {
+	tempHome := t.TempDir()
+	os.Setenv("HOME", tempHome)
 
-	// Clean up environment variables to avoid interference
-	os.Unsetenv("JFROG_USER")
-	os.Unsetenv("JFROG_PASSWORD")
-	os.Setenv("HOME", t.TempDir()) // Set HOME to a writable directory for tests
+	netrcContent := "machine art.example.com login netrcuser password netrcpass\n"
+	netrcPath := createTemporaryNetrc(t, netrcContent)
 
-	defer func() {
-		// Restore original values
-		if origUser != "" {
-			os.Setenv("JFROG_USER", origUser)
-		}
-		if origPass != "" {
-			os.Setenv("JFROG_PASSWORD", origPass)
-		}
-		if origNetrc != "" {
-			os.Setenv("NETRC", origNetrc)
-		}
-		if origHome != "" {
-			os.Setenv("HOME", origHome)
-		}
-	}()
+	testCases := []struct {
+		name     string
+		flags    MirrorFlags
+		env      map[string]string
+		netrc    string // path to .netrc file, empty means no .netrc
+		wantUser string
+		wantPass string
+		wantErr  string // substring match, empty means expect no error
+	}{
+		{
+			name:     "netrc only",
+			env:      map[string]string{"NETRC": netrcPath},
+			wantUser: "netrcuser",
+			wantPass: "netrcpass",
+		},
+		{
+			name:     "env overrides netrc",
+			env:      map[string]string{"NETRC": netrcPath, "JFROG_USER": "envuser", "JFROG_PASSWORD": "envpass"},
+			wantUser: "envuser",
+			wantPass: "envpass",
+		},
+		{
+			name:     "flags override env",
+			flags:    MirrorFlags{JFrogUser: "flaguser", JFrogPassword: "flagpass"},
+			env:      map[string]string{"NETRC": netrcPath, "JFROG_USER": "envuser", "JFROG_PASSWORD": "envpass"},
+			wantUser: "flaguser",
+			wantPass: "flagpass",
+		},
+		{
+			name:    "no credentials anywhere",
+			env:     map[string]string{"NETRC": filepath.Join(t.TempDir(), "non-existent-netrc")},
+			wantErr: "JFrog user is required",
+		},
+		{
+			name:    "env user only, missing password",
+			env:     map[string]string{"NETRC": filepath.Join(t.TempDir(), "non-existent-netrc"), "JFROG_USER": "envuser"},
+			wantErr: "JFrog password is required",
+		},
+		{
+			name:     "flags provide all",
+			flags:    MirrorFlags{JFrogUser: "flaguser", JFrogPassword: "flagpass"},
+			env:      map[string]string{"NETRC": filepath.Join(t.TempDir(), "non-existent-netrc")},
+			wantUser: "flaguser",
+			wantPass: "flagpass",
+		},
+	}
 
-	flags := &MirrorFlags{}
 	jfrogURL := "https://art.example.com/artifactory"
 
-	// Create a non-existent netrc file path to ensure no credentials are found
-	nonExistentNetrc := filepath.Join(t.TempDir(), "non-existent-netrc")
-	os.Setenv("NETRC", nonExistentNetrc)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			withEnv(t, tc.env, func() {
+				flags := tc.flags // copy
+				v := viper.New()
+				v.SetEnvPrefix("JFROG")
+				v.AutomaticEnv()
 
-	v := viper.New()
-	v.SetEnvPrefix("JFROG")
-	v.AutomaticEnv()
-
-	// Case 1: No credentials anywhere - should get user required error
-	_, _, err := getJFrogCredentials(jfrogURL, flags, v)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "JFrog user is required")
-
-	// Case 2: With username from env, should still error with password required
-	os.Setenv("JFROG_USER", "envuser")
-	_, _, err = getJFrogCredentials(jfrogURL, flags, v)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "JFrog password is required")
-
-	// Case 3: With complete credentials, should not error
-	flags.JFrogUser = "flaguser"
-	flags.JFrogPassword = "flagpass"
-	user, pass, err := getJFrogCredentials(jfrogURL, flags, v)
-	require.NoError(t, err)
-	require.Equal(t, "flaguser", user)
-	require.Equal(t, "flagpass", pass)
+				user, pass, err := getJFrogCredentials(jfrogURL, &flags, v)
+				if tc.wantErr != "" {
+					require.Error(t, err)
+					require.Contains(t, err.Error(), tc.wantErr)
+					return
+				}
+				require.NoError(t, err)
+				require.Equal(t, tc.wantUser, user)
+				require.Equal(t, tc.wantPass, pass)
+			})
+		})
+	}
 }
