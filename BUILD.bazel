@@ -30,6 +30,7 @@ go_library(
         "//pkg/core",
         "//pkg/destinations",
         "//pkg/mirror",
+        "//pkg/processor",
         "//pkg/sources",
         "@com_github_sirupsen_logrus//:logrus",
     ],
