@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/albertocavalcante/garf/compare/v0.3.0...v0.3.1) (2025-05-27)
+
+
+### Features
+
+* enhance logging ([#95](https://github.com/albertocavalcante/garf/issues/95)) ([181992b](https://github.com/albertocavalcante/garf/commit/181992b51c02954ed2bc3d9e67354032870e7644))
+
 ## [0.3.0](https://github.com/albertocavalcante/garf/compare/v0.2.0...v0.3.0) (2025-05-27)
 
 
