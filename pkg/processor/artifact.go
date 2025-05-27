@@ -59,6 +59,20 @@ func handleZipExtraction(
 		return fmt.Errorf("failed to create temporary directory: %w", err)
 	}
 
+	// Ensure cleanup of temporary directory
+	var cleanupDone bool
+	defer func() {
+		if !cleanupDone {
+			if cleanupErr := os.RemoveAll(tempDir); cleanupErr != nil {
+				if logger != nil {
+					logger.WithError(cleanupErr).WithField("temp_dir", tempDir).Warn("Failed to clean up temporary directory")
+				}
+			} else if logger != nil {
+				logger.WithField("temp_dir", tempDir).Debug("Cleaned up temporary directory")
+			}
+		}
+	}()
+
 	if logger != nil {
 		logger.WithField("temp_dir", tempDir).Debug("Created temporary directory for ZIP extraction")
 	}
@@ -70,9 +84,6 @@ func handleZipExtraction(
 
 	extractedPath, err := archive.ExtractSingleFile(artifact.Location, extractOpts)
 	if err != nil {
-		// Clean up the temporary directory if extraction fails
-		os.RemoveAll(tempDir)
-
 		return fmt.Errorf("failed to extract zip: %w", err)
 	}
 
@@ -99,16 +110,13 @@ func handleZipExtraction(
 	}
 
 	// Mirror the extracted file
+	var mirrorErrors []error
+
 	extractResults := mirror.Mirror(ctx, []*core.Artifact{artifact}, opts)
 	for extractResult := range extractResults {
 		if extractResult.Error != nil {
-			// Clean up the temporary directory if mirroring fails
-			os.RemoveAll(tempDir)
-
-			return extractResult.Error
-		}
-
-		if logger != nil {
+			mirrorErrors = append(mirrorErrors, extractResult.Error)
+		} else if logger != nil {
 			logger.WithFields(logrus.Fields{
 				"artifact_name":    extractResult.Artifact.Name,
 				"destination_path": extractResult.DestinationPath,
@@ -116,15 +124,12 @@ func handleZipExtraction(
 		}
 	}
 
-	// Clean up the temporary directory after successful mirroring
-	if err := os.RemoveAll(tempDir); err != nil {
-		if logger != nil {
-			logger.WithError(err).WithField("temp_dir", tempDir).Warn("Failed to clean up temporary directory")
-		}
-		// Don't return error for cleanup failure as the main operation succeeded
-	} else if logger != nil {
-		logger.WithField("temp_dir", tempDir).Debug("Cleaned up temporary directory")
+	// Handle mirror errors
+	if len(mirrorErrors) > 0 {
+		return fmt.Errorf("failed to mirror extracted files: %v", mirrorErrors)
 	}
+
+	cleanupDone = true
 
 	return nil
 }

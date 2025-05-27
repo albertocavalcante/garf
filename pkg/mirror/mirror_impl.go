@@ -20,6 +20,8 @@ import (
 const (
 	// defaultDirPerm is the default permission for created directories.
 	defaultDirPerm = 0o755
+	// maxExtractedFileSize is the maximum size allowed for extracted files (100MB).
+	maxExtractedFileSize = 100 * 1024 * 1024
 )
 
 // DefaultMirror implements the Mirror interface.
@@ -449,6 +451,12 @@ func (m *DefaultMirror) extractSingleFileFromZip(
 		return "", "", fmt.Errorf("no files found in ZIP archive")
 	}
 
+	// Check file size to prevent ZIP bombs
+	if targetFile.UncompressedSize64 > maxExtractedFileSize {
+		return "", "", fmt.Errorf("file too large: %d bytes (max allowed: %d bytes)",
+			targetFile.UncompressedSize64, maxExtractedFileSize)
+	}
+
 	logger.WithField("zip_file_name", targetFile.Name).Debug("Found file in ZIP archive")
 
 	// Create destination directory if it doesn't exist
@@ -474,9 +482,17 @@ func (m *DefaultMirror) extractSingleFileFromZip(
 	}
 	defer outFile.Close()
 
-	// Copy the file contents
-	if _, err := io.Copy(outFile, rc); err != nil {
+	// Copy the file contents with size limit protection
+	limitedReader := io.LimitReader(rc, maxExtractedFileSize+1) // +1 to detect oversized files
+
+	bytesWritten, err := io.Copy(outFile, limitedReader)
+	if err != nil {
 		return "", "", fmt.Errorf("failed to copy file contents: %w", err)
+	}
+
+	// Check if the file exceeded the size limit during extraction
+	if bytesWritten > maxExtractedFileSize {
+		return "", "", fmt.Errorf("file exceeded size limit during extraction: %d bytes", bytesWritten)
 	}
 
 	logger.WithFields(logrus.Fields{
