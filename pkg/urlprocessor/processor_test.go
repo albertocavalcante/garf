@@ -8,7 +8,7 @@ import (
 )
 
 func TestGitHubProcessor(t *testing.T) {
-	processor := &urlprocessor.GitHubProcessor{}
+	processor := urlprocessor.NewGitHubProcessor(nil)
 
 	tests := []struct {
 		name     string

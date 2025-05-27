@@ -39,6 +39,8 @@ func (s *GitHubSource) List(ctx context.Context) ([]*core.Artifact, error) {
 // ensureTempDir ensures that a temporary directory exists for downloads.
 func (s *GitHubSource) ensureTempDir() error {
 	if s.tempDir != "" {
+		s.logger.WithField("temp_dir", s.tempDir).Debug("Using existing temporary directory")
+
 		return nil
 	}
 
@@ -48,6 +50,7 @@ func (s *GitHubSource) ensureTempDir() error {
 	}
 
 	s.tempDir = tempDir
+	s.logger.WithField("temp_dir", s.tempDir).Info("Created temporary directory for downloads")
 
 	return nil
 }
@@ -75,13 +78,23 @@ func (s *GitHubSource) downloadToTempFile(resp *http.Response) (io.ReadCloser, e
 		return nil, fmt.Errorf("failed to create temporary file: %w", err)
 	}
 
-	_, err = io.Copy(tempFile, resp.Body)
+	s.logger.WithFields(logrus.Fields{
+		"temp_file":      tempFile.Name(),
+		"content_length": resp.ContentLength,
+	}).Info("Downloading artifact to temporary file")
+
+	bytesWritten, err := io.Copy(tempFile, resp.Body)
 	if err != nil {
 		tempFile.Close()
 		os.Remove(tempFile.Name())
 
 		return nil, fmt.Errorf("failed to save artifact: %w", err)
 	}
+
+	s.logger.WithFields(logrus.Fields{
+		"temp_file":     tempFile.Name(),
+		"bytes_written": bytesWritten,
+	}).Info("Successfully downloaded artifact to temporary file")
 
 	if _, err := tempFile.Seek(0, 0); err != nil {
 		tempFile.Close()
@@ -93,6 +106,7 @@ func (s *GitHubSource) downloadToTempFile(resp *http.Response) (io.ReadCloser, e
 	return &cleanupReadCloser{
 		ReadCloser: tempFile,
 		cleanup: func() {
+			s.logger.WithField("temp_file", tempFile.Name()).Debug("Cleaning up temporary file")
 			tempFile.Close()
 			os.Remove(tempFile.Name())
 		},
@@ -102,15 +116,20 @@ func (s *GitHubSource) downloadToTempFile(resp *http.Response) (io.ReadCloser, e
 // Get retrieves an artifact from GitHub.
 func (s *GitHubSource) Get(ctx context.Context, artifact *core.Artifact) (io.ReadCloser, error) {
 	logger := s.logger.WithFields(logrus.Fields{
-		"source": "github",
-		"url":    artifact.Location,
+		"source":        "github",
+		"url":           artifact.Location,
+		"artifact_name": artifact.Name,
 	})
 
+	logger.Info("Starting GitHub artifact download")
+
 	if err := core.ValidateGitHubURL(artifact.Location); err != nil {
-		logger.WithError(err).Error("Invalid URL")
+		logger.WithError(err).Error("Invalid GitHub URL")
 
 		return nil, err
 	}
+
+	logger.Debug("GitHub URL validation passed")
 
 	if err := s.ensureTempDir(); err != nil {
 		logger.WithError(err).Error("Failed to create temporary directory")
@@ -118,22 +137,37 @@ func (s *GitHubSource) Get(ctx context.Context, artifact *core.Artifact) (io.Rea
 		return nil, err
 	}
 
+	logger.Debug("Creating HTTP request for GitHub download")
+
 	req, err := createGitHubRequest(ctx, artifact.Location)
 	if err != nil {
-		logger.WithError(err).Error("Failed to create request")
+		logger.WithError(err).Error("Failed to create HTTP request")
 
 		return nil, err
 	}
 
+	logger.WithFields(logrus.Fields{
+		"method":  req.Method,
+		"url":     req.URL.String(),
+		"headers": req.Header,
+	}).Debug("Sending HTTP request to GitHub")
+
 	resp, err := s.client.Do(req)
 	if err != nil {
-		logger.WithError(err).Error("Failed to download artifact")
+		logger.WithError(err).Error("Failed to download artifact from GitHub")
 
 		return nil, fmt.Errorf("failed to download artifact: %w", err)
 	}
 
+	logger.WithFields(logrus.Fields{
+		"status_code":    resp.StatusCode,
+		"content_length": resp.ContentLength,
+		"content_type":   resp.Header.Get("Content-Type"),
+	}).Info("Received response from GitHub")
+
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
+		logger.WithField("status_code", resp.StatusCode).Error("GitHub returned non-200 status code")
 
 		return nil, fmt.Errorf("failed to download artifact: HTTP %d", resp.StatusCode)
 	}
@@ -142,10 +176,12 @@ func (s *GitHubSource) Get(ctx context.Context, artifact *core.Artifact) (io.Rea
 	resp.Body.Close()
 
 	if err != nil {
-		logger.WithError(err).Error("Failed to handle download")
+		logger.WithError(err).Error("Failed to save artifact to temporary file")
 
 		return nil, err
 	}
+
+	logger.Info("Successfully completed GitHub artifact download")
 
 	return reader, nil
 }

@@ -14,7 +14,7 @@ type Registry struct {
 func NewRegistry() *Registry {
 	return &Registry{
 		processors: []Processor{
-			&GitHubProcessor{},
+			NewGitHubProcessor(nil),
 			// Add more processors here as needed
 		},
 		defaultProcessor: &DefaultProcessor{},

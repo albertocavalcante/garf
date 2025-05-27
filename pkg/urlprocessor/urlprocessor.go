@@ -5,12 +5,15 @@ package urlprocessor
 import (
 	"net/url"
 	"path"
+
+	"github.com/sirupsen/logrus"
 )
 
 // PathBuilder transforms URLs into structured storage paths.
 // It provides both raw path preservation and cleaner structured paths.
 type PathBuilder struct {
 	processors []processor
+	logger     *logrus.Logger
 }
 
 // processor is an internal type for handling different URL formats.
@@ -21,9 +24,19 @@ type processor struct {
 
 // New creates a new PathBuilder with default processors.
 func New() *PathBuilder {
-	githubProc := &GitHubProcessor{}
+	return NewWithLogger(nil)
+}
+
+// NewWithLogger creates a new PathBuilder with a logger and default processors.
+func NewWithLogger(logger *logrus.Logger) *PathBuilder {
+	if logger == nil {
+		logger = logrus.New()
+	}
+
+	githubProc := NewGitHubProcessor(logger)
 
 	return &PathBuilder{
+		logger: logger,
 		processors: []processor{
 			// GitHub URLs processor
 			{
@@ -53,19 +66,35 @@ func (p *PathBuilder) AddProcessor(canHandle func(*url.URL) bool, process func(*
 
 // ProcessURL finds the appropriate processor for the URL and returns the resulting path.
 func (p *PathBuilder) ProcessURL(sourceURL *url.URL, raw bool) string {
-	for _, proc := range p.processors {
+	p.logger.WithFields(logrus.Fields{
+		"url":      sourceURL.String(),
+		"raw_mode": raw,
+	}).Debug("Processing URL with PathBuilder")
+
+	for i, proc := range p.processors {
 		if proc.canHandle(sourceURL) {
-			return proc.process(sourceURL, raw)
+			result := proc.process(sourceURL, raw)
+			p.logger.WithFields(logrus.Fields{
+				"processor_index": i,
+				"result_path":     result,
+			}).Debug("URL processed successfully")
+
+			return result
 		}
 	}
 
-	return path.Base(sourceURL.Path) // Fallback in case processors list is empty
+	fallback := path.Base(sourceURL.Path)
+	p.logger.WithField("fallback_path", fallback).Debug("Using fallback path processing")
+
+	return fallback // Fallback in case processors list is empty
 }
 
 // ProcessURLString parses a URL string and processes it.
 func (p *PathBuilder) ProcessURLString(urlStr string, raw bool) (string, error) {
 	sourceURL, err := url.Parse(urlStr)
 	if err != nil {
+		p.logger.WithError(err).WithField("url_string", urlStr).Error("Failed to parse URL string")
+
 		return "", err
 	}
 

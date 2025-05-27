@@ -188,6 +188,7 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 		if err := c.mirror.AddDestination(destKey, jfrogDest); err != nil {
 			return nil, fmt.Errorf("failed to add destination: %w", err)
 		}
+
 		c.destinations[destKey] = true
 	}
 

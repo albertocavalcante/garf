@@ -194,16 +194,40 @@ func runMirror(flags *MirrorFlags) error {
 	// Setup logger
 	logger := setupLogger(cfg, flags)
 
+	// Log configuration (without sensitive data)
+	logger.WithFields(logrus.Fields{
+		"source_url":   flags.Source,
+		"destination":  flags.Destination,
+		"jfrog_url":    cfg.Destination.URL,
+		"jfrog_user":   cfg.Destination.User,
+		"raw_mode":     flags.Raw,
+		"unzip":        flags.Unzip,
+		"dry_run":      flags.DryRun,
+		"dry_run_mode": flags.DryRunMode,
+	}).Info("Starting mirror operation with configuration")
+
 	// Create mirror with sources and destinations
 	m, err := setupMirror(logger, cfg, flags)
 	if err != nil {
+		logger.WithError(err).Error("Failed to setup mirror")
+
 		return err
 	}
+
+	logger.Debug("Mirror setup completed successfully")
 
 	// Create artifact and options
 	artifact, opts := createArtifactAndOptions(flags, cfg)
 
+	logger.WithFields(logrus.Fields{
+		"artifact_name":     artifact.Name,
+		"artifact_location": artifact.Location,
+		"metadata":          artifact.Metadata,
+	}).Info("Created artifact for mirroring")
+
 	// Execute mirroring
+	logger.Info("Starting mirror execution")
+
 	results := m.Mirror(opts.Context, []*core.Artifact{artifact}, opts)
 
 	// Process results
@@ -217,8 +241,15 @@ func runMirror(flags *MirrorFlags) error {
 			continue
 		}
 
+		logger.WithFields(logrus.Fields{
+			"artifact_name":    result.Artifact.Name,
+			"destination_path": result.DestinationPath,
+		}).Info("Successfully mirrored artifact")
+
 		// If unzip is enabled, process the artifact
 		if flags.Unzip {
+			logger.Info("Processing artifact for unzip")
+
 			if err := processor.ProcessArtifact(
 				opts.Context,
 				logger,
@@ -228,8 +259,16 @@ func runMirror(flags *MirrorFlags) error {
 			); err != nil {
 				lastErr = err
 				logger.WithError(err).Error("Failed to process artifact")
+			} else {
+				logger.Info("Successfully processed artifact")
 			}
 		}
+	}
+
+	if lastErr == nil {
+		logger.Info("Mirror operation completed successfully")
+	} else {
+		logger.WithError(lastErr).Error("Mirror operation completed with errors")
 	}
 
 	return lastErr
