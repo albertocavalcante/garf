@@ -322,7 +322,7 @@ func (m *DefaultMirror) processContentForUpload(
 	defer os.Remove(tempZipPath) // Clean up the temp ZIP file
 
 	// Extract the ZIP file
-	extractedContent, extractedArtifact, err := m.extractZipContent(tempZipPath, artifact, logger)
+	extractedContent, extractedArtifact, err := m.extractZipContent(tempZipPath, artifact, opts, logger)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to extract ZIP: %w", err)
 	}
@@ -364,6 +364,7 @@ func (m *DefaultMirror) saveZipToTempFile(content io.ReadCloser, logger *logrus.
 func (m *DefaultMirror) extractZipContent(
 	tempZipPath string,
 	artifact *core.Artifact,
+	opts *core.MirrorOptions,
 	logger *logrus.Logger,
 ) (io.ReadCloser, *core.Artifact, error) {
 	// Create temporary directory for extraction
@@ -397,9 +398,20 @@ func (m *DefaultMirror) extractZipContent(
 		return nil, nil, fmt.Errorf("failed to open extracted file: %w", err)
 	}
 
+	// Determine the final artifact name
+	finalName := extractedName
+	if opts != nil && opts.PreserveZipName {
+		finalName = m.buildPreservedZipName(artifact.Name, extractedName)
+		logger.WithFields(logrus.Fields{
+			"original_zip_name": artifact.Name,
+			"extracted_name":    extractedName,
+			"preserved_name":    finalName,
+		}).Info("Preserving ZIP filename with extracted file extension")
+	}
+
 	// Create a new artifact with the extracted file information
 	extractedArtifact := &core.Artifact{
-		Name:     extractedName,
+		Name:     finalName,
 		Location: artifact.Location, // Keep original location for coordinate extraction
 		Metadata: artifact.Metadata,
 		Version:  artifact.Version,
@@ -407,7 +419,8 @@ func (m *DefaultMirror) extractZipContent(
 
 	logger.WithFields(logrus.Fields{
 		"original_name":     artifact.Name,
-		"extracted_name":    extractedArtifact.Name,
+		"extracted_name":    extractedName,
+		"final_name":        finalName,
 		"original_location": artifact.Location,
 	}).Info("Updated artifact information with extracted file")
 
@@ -502,6 +515,24 @@ func (m *DefaultMirror) extractSingleFileFromZip(
 	}).Debug("Successfully extracted file from ZIP")
 
 	return destPath, fileName, nil
+}
+
+// buildPreservedZipName constructs a filename that preserves the ZIP name but uses the extracted file's extension.
+func (m *DefaultMirror) buildPreservedZipName(zipName, extractedName string) string {
+	// Remove .zip extension from the ZIP name
+	zipBaseName := strings.TrimSuffix(zipName, ".zip")
+	zipBaseName = strings.TrimSuffix(zipBaseName, ".ZIP") // Handle uppercase too
+
+	// Get the extension from the extracted file
+	extractedExt := filepath.Ext(extractedName)
+
+	// If the extracted file has no extension, return the ZIP base name as-is
+	if extractedExt == "" {
+		return zipBaseName
+	}
+
+	// Combine the ZIP base name with the extracted file's extension
+	return zipBaseName + extractedExt
 }
 
 // tempDirCleanupReader wraps a ReadCloser and cleans up a temporary directory when closed.
