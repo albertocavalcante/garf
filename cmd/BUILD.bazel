@@ -14,6 +14,7 @@ go_library(
         "//pkg/core/config",
         "//pkg/io",
         "//pkg/mirror",
+        "//pkg/netrc",
         "//pkg/processor",
         "@com_github_sirupsen_logrus//:logrus",
         "@com_github_spf13_cobra//:cobra",
@@ -25,6 +26,7 @@ go_test(
     name = "cmd_test",
     size = "small",
     srcs = [
+        "mirror_netrc_test.go",
         "mirror_test.go",
         "version_test.go",
     ],
@@ -33,8 +35,10 @@ go_test(
         "//pkg/core",
         "//pkg/mirror",
         "//pkg/sources",
+        "//pkg/testutil",
         "@com_github_sirupsen_logrus//:logrus",
         "@com_github_spf13_cobra//:cobra",
+        "@com_github_spf13_viper//:viper",
         "@com_github_stretchr_testify//require",
     ],
 )

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Global mutex to protect access to cmd.Version, cmd.CommitHash, and cmd.BuildDate
+// Global mutex to protect access to cmd.Version, cmd.CommitHash, and cmd.BuildDate.
 var versionMutex sync.Mutex
 
 type versionTestCase struct {
@@ -51,7 +51,6 @@ Build Date: 2024-03-29
 	testChannel <- struct{}{} // Initialize with one token
 
 	for _, tc := range tests {
-		tc := tc // capture for Go < 1.22
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

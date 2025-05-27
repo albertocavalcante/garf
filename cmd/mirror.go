@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/albertocavalcante/garf/pkg/core/config"
 	"github.com/albertocavalcante/garf/pkg/io"
 	"github.com/albertocavalcante/garf/pkg/mirror"
+	"github.com/albertocavalcante/garf/pkg/netrc"
 	"github.com/albertocavalcante/garf/pkg/processor"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -286,7 +288,7 @@ func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
 		return nil, err
 	}
 
-	jfrogUser, jfrogPassword, err := getJFrogCredentials(flags, v)
+	jfrogUser, jfrogPassword, err := GetJFrogCredentials(jfrogURL, flags, v)
 	if err != nil {
 		return nil, err
 	}
@@ -338,40 +340,79 @@ func getJFrogURL(flags *MirrorFlags, v *viper.Viper) (string, error) {
 	return jfrogURL, nil
 }
 
-// getJFrogCredentials retrieves JFrog credentials from flags or environment.
-func getJFrogCredentials(flags *MirrorFlags, v *viper.Viper) (string, string, error) {
-	// Get username
+// GetJFrogCredentials retrieves JFrog credentials from flags, environment variables, or .netrc.
+func GetJFrogCredentials(jfrogURL string, flags *MirrorFlags, v *viper.Viper) (string, string, error) {
 	jfrogUser := flags.JFrogUser
 	if jfrogUser == "" {
 		jfrogUser = v.GetString("USER")
 	}
 
-	// Get password
 	jfrogPassword := flags.JFrogPassword
 	if jfrogPassword == "" {
 		jfrogPassword = v.GetString("PASSWORD")
 	}
 
-	// Handle password from stdin
 	if flags.JFrogPasswordFromStdin {
 		password, err := io.ReadPasswordFromStdin()
 		if err != nil {
-			return "", "", err
+			return "", "", fmt.Errorf("failed to read password from stdin: %w", err)
 		}
 
 		jfrogPassword = password
 	}
 
-	// Validate
-	if jfrogUser == "" {
+	var netrcErr error
+	if jfrogUser == "" || jfrogPassword == "" {
+		jfrogUser, jfrogPassword, netrcErr = tryNetrcCredentials(jfrogURL, jfrogUser, jfrogPassword)
+	}
+
+	return validateCredentials(jfrogUser, jfrogPassword, netrcErr)
+}
+
+// tryNetrcCredentials attempts to get missing credentials from .netrc.
+func tryNetrcCredentials(jfrogURL, currentUser, currentPassword string) (string, string, error) {
+	host, err := ExtractHostFromURL(jfrogURL)
+	if err != nil {
+		return currentUser, currentPassword, err
+	}
+
+	creds, found, err := netrc.GetHostCredentials(host)
+	if err != nil {
+		return currentUser, currentPassword, err
+	}
+
+	if found {
+		if currentUser == "" {
+			currentUser = creds.Login
+		}
+
+		if currentPassword == "" {
+			currentPassword = creds.Password
+		}
+	}
+
+	return currentUser, currentPassword, nil
+}
+
+// validateCredentials checks if credentials are complete and returns appropriate errors.
+func validateCredentials(user, password string, netrcErr error) (string, string, error) {
+	if user == "" {
+		if netrcErr != nil {
+			return "", "", fmt.Errorf("JFrog user is required and .netrc lookup failed: %w", netrcErr)
+		}
+
 		return "", "", fmt.Errorf("JFrog user is required")
 	}
 
-	if jfrogPassword == "" {
+	if password == "" {
+		if netrcErr != nil {
+			return "", "", fmt.Errorf("JFrog password is required and .netrc lookup failed: %w", netrcErr)
+		}
+
 		return "", "", fmt.Errorf("JFrog password is required")
 	}
 
-	return jfrogUser, jfrogPassword, nil
+	return user, password, nil
 }
 
 // setupLogger creates and configures a logger.
@@ -469,4 +510,22 @@ func createArtifactAndOptions(flags *MirrorFlags, cfg *config.Config) (*core.Art
 	}
 
 	return artifact, opts
+}
+
+// ExtractHostFromURL parses the provided URL string and returns the host without scheme.
+func ExtractHostFromURL(rawURL string) (string, error) {
+	if rawURL == "" {
+		return "", fmt.Errorf("URL cannot be empty")
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse JFrog URL %q: %w", rawURL, err)
+	}
+
+	if parsed.Host == "" {
+		return "", fmt.Errorf("URL %q does not contain a valid host", rawURL)
+	}
+
+	return parsed.Host, nil
 }

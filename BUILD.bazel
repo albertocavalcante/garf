@@ -20,9 +20,7 @@ go_library(
     srcs = ["garf.go"],
     importpath = "github.com/albertocavalcante/garf",
     visibility = ["//visibility:private"],
-    deps = [
-        "//cmd",
-    ],
+    deps = ["//cmd"],
 )
 
 go_binary(
