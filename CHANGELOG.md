@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/albertocavalcante/garf/compare/v0.3.3...v0.3.4) (2025-05-27)
+
+
+### Bug Fixes
+
+* `preserve-zip-name` flag behavior ([#101](https://github.com/albertocavalcante/garf/issues/101)) ([f50e0cd](https://github.com/albertocavalcante/garf/commit/f50e0cd0fa8e2367826a72f4e897805eeb8459cc))
+
 ## [0.3.3](https://github.com/albertocavalcante/garf/compare/v0.3.2...v0.3.3) (2025-05-27)
 
 
