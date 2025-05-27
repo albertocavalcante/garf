@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/albertocavalcante/garf/compare/v0.3.2...v0.3.3) (2025-05-27)
+
+
+### Features
+
+* add flag `preserve-zip-name` to keep zip name for the file contents ([#99](https://github.com/albertocavalcante/garf/issues/99)) ([c76a702](https://github.com/albertocavalcante/garf/commit/c76a7025930fe4eec8634325e8ac858373e83b0d))
+
 ## [0.3.2](https://github.com/albertocavalcante/garf/compare/v0.3.1...v0.3.2) (2025-05-27)
 
 
