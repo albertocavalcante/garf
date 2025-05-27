@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/albertocavalcante/garf/compare/v0.2.0...v0.3.0) (2025-05-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* Expose Library API for 3rd Party Usages ([#93](https://github.com/albertocavalcante/garf/issues/93))
+
+### Features
+
+* Expose Library API for 3rd Party Usages ([#93](https://github.com/albertocavalcante/garf/issues/93)) ([44afc3e](https://github.com/albertocavalcante/garf/commit/44afc3e971d1a47221b65750d506a35f4fdfbf1d))
+
 ## [0.2.0](https://github.com/albertocavalcante/garf/compare/v0.1.1...v0.2.0) (2025-05-27)
 
 
