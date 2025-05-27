@@ -30,11 +30,12 @@ go_test(
         "mirror_test.go",
         "version_test.go",
     ],
-    embed = [":cmd"],
     deps = [
+        ":cmd",
         "//pkg/core",
         "//pkg/mirror",
         "//pkg/sources",
+        "//pkg/testutil",
         "@com_github_sirupsen_logrus//:logrus",
         "@com_github_spf13_cobra//:cobra",
         "@com_github_spf13_viper//:viper",
