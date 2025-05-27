@@ -1,16 +1,27 @@
 package mirror
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/albertocavalcante/garf/pkg/core"
 	"github.com/albertocavalcante/garf/pkg/core/config"
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	// defaultDirPerm is the default permission for created directories.
+	defaultDirPerm = 0o755
+	// maxExtractedFileSize is the maximum size allowed for extracted files (100MB).
+	maxExtractedFileSize = 100 * 1024 * 1024
 )
 
 // DefaultMirror implements the Mirror interface.
@@ -203,6 +214,13 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 
 	logger.Info("Successfully downloaded artifact from source")
 
+	// Handle ZIP extraction if needed
+	finalContent, finalArtifact, err := m.processContentForUpload(ctx, content, artifact, opts, m.logger)
+	if err != nil {
+		return fmt.Errorf("failed to process content: %w", err)
+	}
+	defer finalContent.Close()
+
 	// Check if we're in upload-only dry-run mode
 	if opts != nil && opts.DryRun && opts.DryRunMode == "upload" {
 		logger.Info("Dry run mode 'upload' - skipping upload only")
@@ -213,7 +231,7 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 	logger.Info("Buffering artifact content for upload")
 	// Buffer the content before concurrent uploads
 	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, content); err != nil {
+	if _, err := io.Copy(&buf, finalContent); err != nil {
 		logger.WithError(err).Error("Failed to buffer artifact content")
 
 		return fmt.Errorf("failed to buffer content: %w", err)
@@ -248,7 +266,7 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 				raw = opts.Raw
 			}
 
-			if err := d.Put(ctx, artifact, r, raw); err != nil {
+			if err := d.Put(ctx, finalArtifact, r, raw); err != nil {
 				destLogger.WithError(err).Error("Failed to upload to destination")
 				errChan <- fmt.Errorf("failed to upload to destination: %w", err)
 			} else {
@@ -271,7 +289,246 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 		logger.Info("All uploads completed successfully")
 	}
 
+	// Update the result artifact to reflect any changes (like from ZIP extraction)
+	result.Artifact = finalArtifact
+
 	return lastErr
+}
+
+// processContentForUpload handles ZIP extraction if needed and returns the final content and artifact.
+func (m *DefaultMirror) processContentForUpload(
+	ctx context.Context,
+	content io.ReadCloser,
+	artifact *core.Artifact,
+	opts *core.MirrorOptions,
+	logger *logrus.Logger,
+) (io.ReadCloser, *core.Artifact, error) {
+	// Check if unzip is enabled and this is a ZIP file
+	shouldUnzip := opts != nil && opts.Unzip && strings.HasSuffix(strings.ToLower(artifact.Location), ".zip")
+
+	if !shouldUnzip {
+		logger.Debug("No ZIP processing needed")
+
+		return content, artifact, nil
+	}
+
+	logger.Info("ZIP file detected - starting extraction process")
+
+	// Save ZIP content to temporary file
+	tempZipPath, err := m.saveZipToTempFile(content, logger)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to save ZIP: %w", err)
+	}
+	defer os.Remove(tempZipPath) // Clean up the temp ZIP file
+
+	// Extract the ZIP file
+	extractedContent, extractedArtifact, err := m.extractZipContent(tempZipPath, artifact, logger)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to extract ZIP: %w", err)
+	}
+
+	return extractedContent, extractedArtifact, nil
+}
+
+// saveZipToTempFile saves the ZIP content to a temporary file and returns the path.
+func (m *DefaultMirror) saveZipToTempFile(content io.ReadCloser, logger *logrus.Logger) (string, error) {
+	// Create temporary file to save the downloaded ZIP
+	tempFile, err := os.CreateTemp("", "garf-zip-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temporary file: %w", err)
+	}
+
+	logger.WithField("temp_zip_file", tempFile.Name()).Debug("Created temporary file for ZIP")
+
+	// Copy the downloaded content to the temporary file
+	if _, err := io.Copy(tempFile, content); err != nil {
+		tempFile.Close()
+		os.Remove(tempFile.Name())
+
+		return "", fmt.Errorf("failed to save ZIP to temporary file: %w", err)
+	}
+
+	// Close the temp file so we can read from it
+	if err := tempFile.Close(); err != nil {
+		os.Remove(tempFile.Name())
+
+		return "", fmt.Errorf("failed to close temporary ZIP file: %w", err)
+	}
+
+	logger.WithField("temp_zip_file", tempFile.Name()).Info("Successfully saved ZIP to temporary file")
+
+	return tempFile.Name(), nil
+}
+
+// extractZipContent extracts content from a ZIP file and returns the extracted content and updated artifact.
+func (m *DefaultMirror) extractZipContent(
+	tempZipPath string,
+	artifact *core.Artifact,
+	logger *logrus.Logger,
+) (io.ReadCloser, *core.Artifact, error) {
+	// Create temporary directory for extraction
+	tempDir, err := os.MkdirTemp("", "garf-unzip-*")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create temporary directory: %w", err)
+	}
+
+	logger.WithField("temp_dir", tempDir).Debug("Created temporary directory for ZIP extraction")
+
+	// Extract the single file from ZIP
+	extractedPath, extractedName, err := m.extractSingleFileFromZip(tempZipPath, tempDir, logger)
+	if err != nil {
+		os.RemoveAll(tempDir)
+
+		return nil, nil, fmt.Errorf("failed to extract ZIP: %w", err)
+	}
+
+	logger.WithFields(logrus.Fields{
+		"original_zip":   tempZipPath,
+		"extracted_path": extractedPath,
+		"extracted_name": extractedName,
+		"temp_dir":       tempDir,
+	}).Info("Successfully extracted ZIP file")
+
+	// Open the extracted file for reading
+	extractedFile, err := os.Open(extractedPath)
+	if err != nil {
+		os.RemoveAll(tempDir)
+
+		return nil, nil, fmt.Errorf("failed to open extracted file: %w", err)
+	}
+
+	// Create a new artifact with the extracted file information
+	extractedArtifact := &core.Artifact{
+		Name:     extractedName,
+		Location: artifact.Location, // Keep original location for coordinate extraction
+		Metadata: artifact.Metadata,
+		Version:  artifact.Version,
+	}
+
+	logger.WithFields(logrus.Fields{
+		"original_name":     artifact.Name,
+		"extracted_name":    extractedArtifact.Name,
+		"original_location": artifact.Location,
+	}).Info("Updated artifact information with extracted file")
+
+	// Return a custom ReadCloser that cleans up the temp directory when closed
+	finalContent := &tempDirCleanupReader{
+		ReadCloser: extractedFile,
+		tempDir:    tempDir,
+		logger:     logger,
+	}
+
+	return finalContent, extractedArtifact, nil
+}
+
+// extractSingleFileFromZip extracts a single file from a ZIP archive.
+// Returns the path to the extracted file and the filename.
+func (m *DefaultMirror) extractSingleFileFromZip(
+	zipPath, destDir string,
+	logger *logrus.Logger,
+) (string, string, error) {
+	// Open the ZIP file
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to open ZIP file: %w", err)
+	}
+	defer reader.Close()
+
+	// Find the first non-directory file
+	var targetFile *zip.File
+
+	for _, f := range reader.File {
+		if !f.FileInfo().IsDir() {
+			if targetFile != nil {
+				return "", "", fmt.Errorf("ZIP file contains multiple files, expected exactly one")
+			}
+
+			targetFile = f
+		}
+	}
+
+	if targetFile == nil {
+		return "", "", fmt.Errorf("no files found in ZIP archive")
+	}
+
+	// Check file size to prevent ZIP bombs
+	if targetFile.UncompressedSize64 > maxExtractedFileSize {
+		return "", "", fmt.Errorf("file too large: %d bytes (max allowed: %d bytes)",
+			targetFile.UncompressedSize64, maxExtractedFileSize)
+	}
+
+	logger.WithField("zip_file_name", targetFile.Name).Debug("Found file in ZIP archive")
+
+	// Create destination directory if it doesn't exist
+	if err := os.MkdirAll(destDir, defaultDirPerm); err != nil {
+		return "", "", fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	// Get the base filename (remove any path components)
+	fileName := filepath.Base(targetFile.Name)
+	destPath := filepath.Join(destDir, fileName)
+
+	// Open the file inside the ZIP
+	rc, err := targetFile.Open()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to open file inside ZIP: %w", err)
+	}
+	defer rc.Close()
+
+	// Create the destination file
+	outFile, err := os.Create(destPath)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer outFile.Close()
+
+	// Copy the file contents with size limit protection
+	limitedReader := io.LimitReader(rc, maxExtractedFileSize+1) // +1 to detect oversized files
+
+	bytesWritten, err := io.Copy(outFile, limitedReader)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to copy file contents: %w", err)
+	}
+
+	// Check if the file exceeded the size limit during extraction
+	if bytesWritten > maxExtractedFileSize {
+		return "", "", fmt.Errorf("file exceeded size limit during extraction: %d bytes", bytesWritten)
+	}
+
+	logger.WithFields(logrus.Fields{
+		"zip_file_name": targetFile.Name,
+		"extracted_to":  destPath,
+		"file_size":     targetFile.UncompressedSize64,
+	}).Debug("Successfully extracted file from ZIP")
+
+	return destPath, fileName, nil
+}
+
+// tempDirCleanupReader wraps a ReadCloser and cleans up a temporary directory when closed.
+type tempDirCleanupReader struct {
+	io.ReadCloser
+	tempDir string
+	logger  *logrus.Logger
+}
+
+func (r *tempDirCleanupReader) Close() error {
+	// Close the underlying reader first
+	err := r.ReadCloser.Close()
+
+	// Clean up the temporary directory
+	if cleanupErr := os.RemoveAll(r.tempDir); cleanupErr != nil {
+		if r.logger != nil {
+			r.logger.WithError(cleanupErr).WithField("temp_dir", r.tempDir).Warn("Failed to clean up temporary directory")
+		}
+		// Don't override the original error if there was one
+		if err == nil {
+			err = cleanupErr
+		}
+	} else if r.logger != nil {
+		r.logger.WithField("temp_dir", r.tempDir).Debug("Cleaned up temporary directory")
+	}
+
+	return err
 }
 
 // Mirror copies artifacts from sources to destinations.

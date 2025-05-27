@@ -25,6 +25,9 @@ type MirrorOptions struct {
 
 	// DryRunMode specifies the dry run mode: "all" or "upload"
 	DryRunMode string
+
+	// Unzip indicates if ZIP files should be extracted during mirroring
+	Unzip bool
 }
 
 // Validate validates the mirror options.
