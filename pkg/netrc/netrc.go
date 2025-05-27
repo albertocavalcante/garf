@@ -358,7 +358,7 @@ func ParseNetrcFile(content string, targetHost string) (login, password string, 
 				if (inMachineContext || inDefaultContext) && activeLoginSet && valueExists {
 					currentPass := unquoteToken(value)
 
-					if inMachineContext && activeMachine == targetHost && !hostFound {
+					if inMachineContext && strings.EqualFold(activeMachine, targetHost) && !hostFound {
 						hostLogin = activeLogin
 						hostPassword = currentPass
 						hostFound = true
