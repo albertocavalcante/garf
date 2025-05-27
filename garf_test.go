@@ -343,3 +343,46 @@ func TestMirrorResult_Structure(t *testing.T) {
 	require.Equal(t, "my-repo/github.com/owner/repo/v1.0.0/artifact.zip", result.DestinationPath)
 	require.NoError(t, result.Error)
 }
+
+func TestClient_DestinationCaching(t *testing.T) {
+	client, err := garf.NewClient(garf.Config{
+		JFrogURL:      "https://test.jfrog.io/artifactory",
+		JFrogUser:     "testuser",
+		JFrogPassword: "testpass",
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// First call to the same destination
+	_, err = client.Mirror(ctx, garf.MirrorRequest{
+		Source:      "https://github.com/test/repo/releases/download/v1.0.0/file1.txt",
+		Destination: "test-repo",
+		DryRun:      true,
+		DryRunMode:  "all",
+	})
+	require.NoError(t, err)
+
+	// Second call to the same destination - should reuse cached destination
+	_, err = client.Mirror(ctx, garf.MirrorRequest{
+		Source:      "https://github.com/test/repo/releases/download/v1.0.0/file2.txt",
+		Destination: "test-repo", // Same destination as above
+		DryRun:      true,
+		DryRunMode:  "all",
+	})
+	require.NoError(t, err)
+
+	// Third call to a different destination - should create new destination
+	_, err = client.Mirror(ctx, garf.MirrorRequest{
+		Source:      "https://github.com/test/repo/releases/download/v1.0.0/file3.txt",
+		Destination: "different-repo", // Different destination
+		DryRun:      true,
+		DryRunMode:  "all",
+	})
+	require.NoError(t, err)
+
+	// Verify that we have exactly 2 destinations cached
+	require.Equal(t, 2, client.GetCachedDestinationsCount())
+	require.True(t, client.IsCachedDestination("test-repo"))
+	require.True(t, client.IsCachedDestination("different-repo"))
+}

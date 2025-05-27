@@ -114,9 +114,10 @@ type MirrorResult struct {
 
 // Client provides the main interface for mirroring artifacts.
 type Client struct {
-	Config Config
-	logger *logrus.Logger
-	mirror *mirror.DefaultMirror
+	Config       Config
+	logger       *logrus.Logger
+	mirror       *mirror.DefaultMirror
+	destinations map[string]bool // Track registered destinations by path
 }
 
 // NewClient creates a new garf client with the provided configuration.
@@ -149,9 +150,10 @@ func NewClient(config Config) (*Client, error) {
 	}
 
 	client := &Client{
-		Config: config,
-		logger: config.Logger,
-		mirror: mirrorInstance,
+		Config:       config,
+		logger:       config.Logger,
+		mirror:       mirrorInstance,
+		destinations: make(map[string]bool),
 	}
 
 	return client, nil
@@ -172,19 +174,21 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 		}
 	}
 
-	// Setup destination (needs to be per-request since destination path varies)
-	jfrogConfig := destinations.JFrogConfig{
-		URL:      c.Config.JFrogURL,
-		User:     c.Config.JFrogUser,
-		Password: c.Config.JFrogPassword,
-		DestPath: request.Destination,
-	}
+	// Setup destination (cache destinations by path to avoid re-registration)
+	destKey := request.Destination
+	if !c.destinations[destKey] {
+		jfrogConfig := destinations.JFrogConfig{
+			URL:      c.Config.JFrogURL,
+			User:     c.Config.JFrogUser,
+			Password: c.Config.JFrogPassword,
+			DestPath: request.Destination,
+		}
 
-	jfrogDest := destinations.NewJFrogDestination(jfrogConfig, c.logger)
-	// Use a unique destination name for each request to avoid conflicts
-	destName := fmt.Sprintf("jfrog-%d", time.Now().UnixNano())
-	if err := c.mirror.AddDestination(destName, jfrogDest); err != nil {
-		return nil, fmt.Errorf("failed to add destination: %w", err)
+		jfrogDest := destinations.NewJFrogDestination(jfrogConfig, c.logger)
+		if err := c.mirror.AddDestination(destKey, jfrogDest); err != nil {
+			return nil, fmt.Errorf("failed to add destination: %w", err)
+		}
+		c.destinations[destKey] = true
 	}
 
 	// Create artifact
@@ -309,4 +313,14 @@ func ExtractArtifactName(urlStr string) string {
 	}
 
 	return name
+}
+
+// GetCachedDestinationsCount returns the number of cached destinations (for testing).
+func (c *Client) GetCachedDestinationsCount() int {
+	return len(c.destinations)
+}
+
+// IsCachedDestination checks if a destination is cached (for testing).
+func (c *Client) IsCachedDestination(destination string) bool {
+	return c.destinations[destination]
 }
