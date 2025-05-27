@@ -84,21 +84,34 @@ func (m *DefaultMirror) processArtifact(
 	artifact *core.Artifact,
 	opts *core.MirrorOptions,
 ) MirrorResult {
+	logger := m.logger.WithFields(logrus.Fields{
+		"artifact_name":     artifact.Name,
+		"artifact_location": artifact.Location,
+	})
+
+	logger.Info("Starting artifact processing")
+
 	result := MirrorResult{
 		Artifact: artifact,
 	}
 
 	if err := m.validateArtifact(artifact); err != nil {
+		logger.WithError(err).Error("Artifact validation failed")
 		result.Error = err
 
 		return result
 	}
+
+	logger.Debug("Artifact validation passed")
 
 	if err := m.downloadAndUploadArtifact(ctx, artifact, opts, &result); err != nil {
+		logger.WithError(err).Error("Download and upload failed")
 		result.Error = err
 
 		return result
 	}
+
+	logger.Info("Successfully processed artifact")
 
 	return result
 }
@@ -115,8 +128,10 @@ func (m *DefaultMirror) validateArtifact(artifact *core.Artifact) error {
 		return fmt.Errorf("no source available")
 	}
 
+	// Allow no destinations only in dry-run mode with "all" mode
+	// This will be checked later in the dry-run handling
 	if len(m.destinations) == 0 {
-		return fmt.Errorf("no destination available")
+		m.logger.Debug("No destinations available - this is only valid in dry-run mode")
 	}
 
 	return nil
@@ -143,57 +158,76 @@ func (m *DefaultMirror) getSourceAndDestinations() (core.Source, []core.Destinat
 	return source, destinations
 }
 
-func (m *DefaultMirror) handleDryRun(artifact *core.Artifact, opts *core.MirrorOptions) bool {
-	if opts != nil && opts.DryRun {
-		if opts.DryRunMode == "all" {
-			m.logger.WithFields(logrus.Fields{
-				"artifact": artifact.Name,
-				"mode":     opts.DryRunMode,
-			}).Info("Dry run: skipping upload")
-
-			return true
-		}
-
-		m.logger.WithFields(logrus.Fields{
-			"artifact": artifact.Name,
-			"mode":     opts.DryRunMode,
-		}).Info("Dry run: simulating upload")
-
-		return false
-	}
-
-	return false
-}
-
 func (m *DefaultMirror) downloadAndUploadArtifact(
 	ctx context.Context,
 	artifact *core.Artifact,
 	opts *core.MirrorOptions,
-	_ *MirrorResult,
+	result *MirrorResult,
 ) error {
+	logger := m.logger.WithFields(logrus.Fields{
+		"artifact_name":     artifact.Name,
+		"artifact_location": artifact.Location,
+	})
+
+	logger.Debug("Getting source and destinations")
+
 	source, destinations := m.getSourceAndDestinations()
 
-	content, err := source.Get(ctx, artifact)
-	if err != nil {
-		return fmt.Errorf("failed to get artifact: %w", err)
-	}
-	defer content.Close()
+	logger.WithFields(logrus.Fields{
+		"num_destinations": len(destinations),
+		"has_source":       source != nil,
+	}).Debug("Retrieved source and destinations")
 
-	if m.handleDryRun(artifact, opts) {
+	// Check if we're in dry-run mode that skips everything
+	if opts != nil && opts.DryRun && opts.DryRunMode == "all" {
+		logger.Info("Dry run mode 'all' - skipping download and upload")
+
 		return nil
 	}
 
+	// For other modes, we need destinations
+	if len(destinations) == 0 {
+		return fmt.Errorf("no destination available")
+	}
+
+	logger.Info("Starting artifact download from source")
+
+	content, err := source.Get(ctx, artifact)
+	if err != nil {
+		logger.WithError(err).Error("Failed to download artifact from source")
+
+		return fmt.Errorf("failed to get artifact: %w", err)
+	}
+
+	defer content.Close()
+
+	logger.Info("Successfully downloaded artifact from source")
+
+	// Check if we're in upload-only dry-run mode
+	if opts != nil && opts.DryRun && opts.DryRunMode == "upload" {
+		logger.Info("Dry run mode 'upload' - skipping upload only")
+
+		return nil
+	}
+
+	logger.Info("Buffering artifact content for upload")
 	// Buffer the content before concurrent uploads
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, content); err != nil {
+		logger.WithError(err).Error("Failed to buffer artifact content")
+
 		return fmt.Errorf("failed to buffer content: %w", err)
 	}
+
+	logger.WithField("buffer_size", buf.Len()).Debug("Successfully buffered artifact content")
 
 	// Create a new reader for each destination
 	readers := make([]io.Reader, len(destinations))
 	for i := range destinations {
 		readers[i] = bytes.NewReader(buf.Bytes())
 	}
+
+	logger.WithField("num_destinations", len(destinations)).Info("Starting concurrent uploads to destinations")
 
 	var wg sync.WaitGroup
 
@@ -202,8 +236,11 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 	for i, dest := range destinations {
 		wg.Add(1)
 
-		go func(d core.Destination, r io.Reader) {
+		go func(d core.Destination, r io.Reader, index int) {
 			defer wg.Done()
+
+			destLogger := logger.WithField("destination_index", index)
+			destLogger.Debug("Starting upload to destination")
 
 			// Get raw value from options, defaulting to false if options is nil
 			raw := false
@@ -212,9 +249,12 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 			}
 
 			if err := d.Put(ctx, artifact, r, raw); err != nil {
+				destLogger.WithError(err).Error("Failed to upload to destination")
 				errChan <- fmt.Errorf("failed to upload to destination: %w", err)
+			} else {
+				destLogger.Info("Successfully uploaded to destination")
 			}
-		}(dest, readers[i])
+		}(dest, readers[i], i)
 	}
 
 	wg.Wait()
@@ -223,6 +263,12 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 	var lastErr error
 	for err := range errChan {
 		lastErr = err
+	}
+
+	if lastErr != nil {
+		logger.WithError(lastErr).Error("One or more uploads failed")
+	} else {
+		logger.Info("All uploads completed successfully")
 	}
 
 	return lastErr

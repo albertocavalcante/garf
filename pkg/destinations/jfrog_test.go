@@ -174,7 +174,9 @@ func getSimplePathTestCases() []urlHandlingTestCase {
 			destPath: "generic-local",
 			raw:      false,
 			pathChecks: []string{
-				"/artifactory/generic-local/github.com/example/repo/v1.0.0/test-artifact.zip",
+				"/generic-local/github.com/example/repo/v1.0.0/test-artifact.zip",
+				"prop1=value1",
+				"prop2=value2",
 			},
 		},
 		{
@@ -182,8 +184,10 @@ func getSimplePathTestCases() []urlHandlingTestCase {
 			destPath: "generic-local",
 			raw:      true,
 			pathChecks: []string{
-				"/artifactory/generic-local/github.com/example/repo/releases/download/",
-				"test-artifact.zip",
+				"/generic-local/github.com/example/repo/releases/download/",
+				"v1.0.0/test-artifact.zip",
+				"prop1=value1",
+				"prop2=value2",
 			},
 		},
 	}
@@ -197,7 +201,7 @@ func getNestedPathTestCases() []urlHandlingTestCase {
 			destPath: "generic/sandbox-mirror",
 			raw:      false,
 			pathChecks: []string{
-				"/artifactory/generic/sandbox-mirror/github.com/example/repo/v1.0.0/test-artifact.zip",
+				"/generic/sandbox-mirror/github.com/example/repo/v1.0.0/test-artifact.zip",
 				"prop1=value1",
 				"prop2=value2",
 			},
@@ -207,8 +211,8 @@ func getNestedPathTestCases() []urlHandlingTestCase {
 			destPath: "generic/sandbox-mirror",
 			raw:      true,
 			pathChecks: []string{
-				"/artifactory/generic/sandbox-mirror/github.com/example/repo/releases/download/",
-				"test-artifact.zip",
+				"/generic/sandbox-mirror/github.com/example/repo/releases/download/",
+				"v1.0.0/test-artifact.zip",
 				"prop1=value1",
 				"prop2=value2",
 			},
@@ -301,14 +305,14 @@ func getTargetURLTestCases() []struct {
 			name:       "simple path",
 			modifyConf: func(c *destinations.JFrogConfig) {},
 			urlChecks: []string{
-				"/artifactory/generic-local/github.com/example/repo/v1.0.0/test-artifact.zip",
+				"/generic-local/github.com/example/repo/v1.0.0/test-artifact.zip",
 			},
 		},
 		{
 			name:       "with properties",
 			modifyConf: func(c *destinations.JFrogConfig) { c.DestPath = "generic/sandbox-mirror" },
 			urlChecks: []string{
-				"/artifactory/generic/sandbox-mirror/github.com/example/repo/v1.0.0/test-artifact.zip",
+				"/generic/sandbox-mirror/github.com/example/repo/v1.0.0/test-artifact.zip",
 				";platform=linux",
 				";type=binary",
 			},
@@ -405,7 +409,7 @@ func TestJFrogDestinationExists(t *testing.T) {
 		}
 
 		// The path should match what PathBuilder generates
-		if strings.Contains(r.URL.Path, "/artifactory/generic-local/github.com/example/repo/v1.0.0/test-artifact.zip") {
+		if strings.Contains(r.URL.Path, "/generic-local/github.com/example/repo/v1.0.0/test-artifact.zip") {
 			w.WriteHeader(http.StatusOK)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
