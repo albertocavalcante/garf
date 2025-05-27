@@ -180,12 +180,12 @@ func TestDefaultPath(t *testing.T) {
 		{
 			name: "HOME fallback",
 			env:  map[string]string{"NETRC": "", "HOME": "/home/user", "USERPROFILE": ""},
-			want: "/home/user/.netrc",
+			want: filepath.Join("/home/user", ".netrc"),
 		},
 		{
 			name: "USERPROFILE fallback",
 			env:  map[string]string{"NETRC": "", "HOME": "", "USERPROFILE": "/Users/user"},
-			want: "/Users/user/.netrc",
+			want: filepath.Join("/Users/user", ".netrc"),
 		},
 	}
 
