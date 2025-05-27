@@ -11,8 +11,9 @@ go_test(
     name = "netrc_test",
     size = "small",
     srcs = ["netrc_test.go"],
-    embed = [":netrc"],
     deps = [
+        ":netrc",
+        "//pkg/testutil",
         "@com_github_stretchr_testify//require",
     ],
 )
