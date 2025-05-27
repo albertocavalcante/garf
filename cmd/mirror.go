@@ -13,7 +13,6 @@ import (
 	"github.com/albertocavalcante/garf/pkg/io"
 	"github.com/albertocavalcante/garf/pkg/mirror"
 	"github.com/albertocavalcante/garf/pkg/netrc"
-	"github.com/albertocavalcante/garf/pkg/processor"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -245,24 +244,6 @@ func runMirror(flags *MirrorFlags) error {
 			"artifact_name":    result.Artifact.Name,
 			"destination_path": result.DestinationPath,
 		}).Info("Successfully mirrored artifact")
-
-		// If unzip is enabled, process the artifact
-		if flags.Unzip {
-			logger.Info("Processing artifact for unzip")
-
-			if err := processor.ProcessArtifact(
-				opts.Context,
-				logger,
-				m,
-				result.Artifact,
-				opts,
-			); err != nil {
-				lastErr = err
-				logger.WithError(err).Error("Failed to process artifact")
-			} else {
-				logger.Info("Successfully processed artifact")
-			}
-		}
 	}
 
 	if lastErr == nil {
@@ -546,6 +527,7 @@ func createArtifactAndOptions(flags *MirrorFlags, cfg *config.Config) (*core.Art
 		Concurrent: defaultConcurrent,
 		DryRun:     flags.DryRun,
 		DryRunMode: flags.DryRunMode,
+		Unzip:      flags.Unzip,
 	}
 
 	return artifact, opts
