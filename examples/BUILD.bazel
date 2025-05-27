@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "examples_lib",
+    srcs = ["library_usage.go"],
+    importpath = "github.com/albertocavalcante/garf/examples",
+    visibility = ["//visibility:private"],
+    deps = ["//:garf_lib"],
+)
+
+go_binary(
+    name = "examples",
+    embed = [":examples_lib"],
+    visibility = ["//visibility:public"],
+)
