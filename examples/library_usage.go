@@ -1,0 +1,315 @@
+// Package main demonstrates how to use garf as a library.
+//
+// This example shows the recommended way for third-party Go programs
+// to integrate garf for artifact mirroring functionality.
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+	"time"
+
+	"github.com/albertocavalcante/garf"
+)
+
+const (
+	// Example configuration constants.
+	exampleTimeout    = 10 * time.Minute
+	exampleConcurrent = 8
+	defaultTimeout    = 30 * time.Minute
+	defaultConcurrent = 4
+	mirrorTimeout     = 5 * time.Minute
+)
+
+func main() {
+	fmt.Println("📋 Garf Library Usage Examples")
+	fmt.Println("==============================")
+
+	// Example 1: Basic usage with minimal configuration
+	basicExample()
+
+	// Example 2: Advanced usage with custom configuration
+	advancedExample()
+
+	// Example 3: Environment-based configuration (recommended)
+	envConfigExample()
+
+	// Example 4: Batch mirroring multiple artifacts
+	batchExample()
+
+	// Example 5: Error handling and dry run
+	errorHandlingExample()
+
+	fmt.Println("\n✅ All examples completed!")
+}
+
+func basicExample() {
+	fmt.Println("\n=== Basic Example ===")
+
+	client, err := garf.NewClient(garf.Config{
+		JFrogURL:      "https://mycompany.jfrog.io/artifactory",
+		JFrogUser:     "username",
+		JFrogPassword: "password",
+	})
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	ctx := context.Background()
+
+	result, err := client.Mirror(ctx, garf.MirrorRequest{
+		Source:      "https://github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-7.2.1-windows-x86_64.exe",
+		Destination: "tools-local",
+	})
+	if err != nil {
+		log.Printf("Mirror failed: %v", err)
+
+		return
+	}
+
+	if result.Error != nil {
+		log.Printf("Mirror operation failed: %v", result.Error)
+
+		return
+	}
+
+	fmt.Printf("✓ Successfully mirrored %s to %s\n", result.Source, result.DestinationPath)
+}
+
+func advancedExample() {
+	fmt.Println("\n=== Advanced Example ===")
+
+	client, err := garf.NewClient(garf.Config{
+		JFrogURL:      "https://mycompany.jfrog.io/artifactory",
+		JFrogUser:     "username",
+		JFrogPassword: "password",
+		Timeout:       exampleTimeout,
+		Concurrent:    exampleConcurrent,
+	})
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	ctx := context.Background()
+
+	result, err := client.Mirror(ctx, garf.MirrorRequest{
+		Source:      "https://github.com/bazelbuild/bazel/releases/download/7.6.0/bazel_nojdk-7.6.0-windows-x86_64.zip",
+		Destination: "tools-local",
+		Properties: map[string]string{
+			"type":     "toolchain",
+			"platform": "windows",
+			"arch":     "x86_64",
+			"version":  "7.6.0",
+		},
+		Unzip: true, // Extract single files from zip archives - fully implemented!
+		Raw:   false,
+	})
+	if err != nil {
+		log.Printf("Mirror failed: %v", err)
+
+		return
+	}
+
+	if result.Error != nil {
+		log.Printf("Mirror operation failed: %v", result.Error)
+
+		return
+	}
+
+	fmt.Printf("✓ Successfully mirrored %s to %s\n", result.Source, result.DestinationPath)
+}
+
+func envConfigExample() {
+	fmt.Println("\n=== Environment Configuration Example (Recommended) ===")
+
+	// Check if environment variables are set
+	jfrogURL := os.Getenv("JFROG_URL")
+	jfrogUser := os.Getenv("JFROG_USER")
+	jfrogPassword := os.Getenv("JFROG_PASSWORD")
+
+	if jfrogURL == "" || jfrogUser == "" || jfrogPassword == "" {
+		fmt.Println("⚠️  Skipping environment example - set JFROG_URL, JFROG_USER, JFROG_PASSWORD")
+		fmt.Println("   Example: export JFROG_URL=https://mycompany.jfrog.io/artifactory")
+
+		return
+	}
+
+	client, err := garf.NewClient(garf.Config{
+		JFrogURL:      jfrogURL,
+		JFrogUser:     jfrogUser,
+		JFrogPassword: jfrogPassword,
+		Timeout:       defaultTimeout,
+		Concurrent:    defaultConcurrent,
+	})
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	ctx := context.Background()
+
+	result, err := client.Mirror(ctx, garf.MirrorRequest{
+		Source:      "https://github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-7.2.1-linux-x86_64",
+		Destination: "tools-local",
+		Properties: map[string]string{
+			"type":     "toolchain",
+			"platform": "linux",
+			"arch":     "x86_64",
+		},
+		DryRun:     true,
+		DryRunMode: "all",
+	})
+	if err != nil {
+		log.Printf("Mirror failed: %v", err)
+
+		return
+	}
+
+	fmt.Printf("✓ Dry run successful for %s\n", result.Source)
+}
+
+func batchExample() {
+	fmt.Println("\n=== Batch Example ===")
+
+	client, err := garf.NewClient(garf.Config{
+		JFrogURL:      "https://mycompany.jfrog.io/artifactory",
+		JFrogUser:     "username",
+		JFrogPassword: "password",
+	})
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	artifacts := []struct {
+		source      string
+		destination string
+		properties  map[string]string
+		unzip       bool
+		description string
+	}{
+		{
+			source:      "https://github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-7.2.1-linux-x86_64",
+			destination: "tools-local",
+			properties:  map[string]string{"platform": "linux", "arch": "x86_64"},
+			unzip:       false,
+			description: "Linux binary",
+		},
+		{
+			source:      "https://github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-7.2.1-darwin-x86_64",
+			destination: "tools-local",
+			properties:  map[string]string{"platform": "darwin", "arch": "x86_64"},
+			unzip:       false,
+			description: "macOS binary",
+		},
+		{
+			source:      "https://github.com/bazelbuild/bazel/releases/download/7.6.0/bazel_nojdk-7.6.0-windows-x86_64.zip",
+			destination: "tools-local",
+			properties:  map[string]string{"platform": "windows", "arch": "x86_64", "type": "zip"},
+			unzip:       true,
+			description: "Windows ZIP (will be extracted)",
+		},
+	}
+
+	ctx := context.Background()
+	successCount := 0
+
+	for i, artifact := range artifacts {
+		fmt.Printf("Mirroring artifact %d/%d: %s (%s)\n", i+1, len(artifacts), artifact.description, artifact.source)
+
+		result, err := client.Mirror(ctx, garf.MirrorRequest{
+			Source:      artifact.source,
+			Destination: artifact.destination,
+			Properties:  artifact.properties,
+			Unzip:       artifact.unzip,
+		})
+		if err != nil {
+			log.Printf("❌ Failed to mirror %s: %v", artifact.source, err)
+
+			continue
+		}
+
+		if result.Error != nil {
+			log.Printf("❌ Mirror operation failed for %s: %v", artifact.source, result.Error)
+
+			continue
+		}
+
+		if artifact.unzip {
+			fmt.Printf("✓ Extracted and mirrored %s\n", result.DestinationPath)
+		} else {
+			fmt.Printf("✓ Mirrored %s\n", result.DestinationPath)
+		}
+
+		successCount++
+	}
+
+	fmt.Printf("📊 Batch complete: %d/%d artifacts mirrored successfully\n", successCount, len(artifacts))
+}
+
+func errorHandlingExample() {
+	fmt.Println("\n=== Error Handling & Dry Run Example ===")
+
+	client, err := garf.NewClient(garf.Config{
+		JFrogURL:      "https://mycompany.jfrog.io/artifactory",
+		JFrogUser:     "username",
+		JFrogPassword: "password",
+	})
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	ctx := context.Background()
+	source := "https://github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-7.2.1-windows-x86_64.exe"
+
+	// Step 1: Validate with dry run
+	fmt.Println("🔍 Validating with dry run...")
+
+	_, err = client.Mirror(ctx, garf.MirrorRequest{
+		Source:      source,
+		Destination: "tools-local",
+		DryRun:      true,
+		DryRunMode:  "all",
+	})
+	if err != nil {
+		log.Printf("❌ Dry run validation failed: %v", err)
+
+		return
+	}
+
+	fmt.Println("✓ Dry run validation passed")
+
+	// Step 2: Perform actual mirror with timeout
+	fmt.Println("⚡ Performing actual mirror...")
+
+	ctx, cancel := context.WithTimeout(ctx, mirrorTimeout)
+
+	defer cancel()
+
+	result, err := client.Mirror(ctx, garf.MirrorRequest{
+		Source:      source,
+		Destination: "tools-local",
+		Properties: map[string]string{
+			"validated": "true",
+			"timestamp": time.Now().Format(time.RFC3339),
+		},
+	})
+
+	// Comprehensive error handling
+	switch {
+	case err != nil:
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("⏰ Mirror timed out: %v", err)
+		} else {
+			log.Printf("❌ Mirror failed: %v", err)
+		}
+
+		return
+	case result.Error != nil:
+		log.Printf("❌ Mirror operation failed: %v", result.Error)
+
+		return
+	default:
+		fmt.Printf("✅ Successfully mirrored to %s\n", result.DestinationPath)
+	}
+}

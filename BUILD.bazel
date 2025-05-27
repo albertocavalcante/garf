@@ -1,8 +1,15 @@
 load("@gazelle//:def.bzl", "gazelle")
-load("@rules_go//go:def.bzl", "go_binary", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 load("//private:go_binary.bzl", "cross_platform_go_binary")
 load("//private:windows_zip.bzl", "windows_bin_zips")
 load("//tools/nogo:nogo.bzl", "setup_nogo")
+
+# Common version stamping configuration
+_VERSION_STAMP_X_DEFS = {
+    "github.com/albertocavalcante/garf/cmd.BuildDate": "{BUILD_DATE}",
+    "github.com/albertocavalcante/garf/cmd.CommitHash": "{STABLE_GIT_COMMIT}",
+    "github.com/albertocavalcante/garf/cmd.Version": "{STABLE_VERSION}",
+}
 
 alias(
     name = "go",
@@ -12,46 +19,44 @@ alias(
 # gazelle:proto disable_global
 gazelle(name = "gazelle")
 
-# This registers the nogo target defined in tools/nogo
 setup_nogo()
 
 go_library(
     name = "garf_lib",
     srcs = ["garf.go"],
     importpath = "github.com/albertocavalcante/garf",
-    visibility = ["//visibility:private"],
-    deps = ["//cmd"],
-)
-
-go_binary(
-    name = "garf",
-    embed = [":garf_lib"],
     visibility = ["//visibility:public"],
-    x_defs = {
-        "github.com/albertocavalcante/garf/cmd.BuildDate": "{BUILD_DATE}",
-        "github.com/albertocavalcante/garf/cmd.CommitHash": "{STABLE_GIT_COMMIT}",
-        "github.com/albertocavalcante/garf/cmd.Version": "{STABLE_VERSION}",
-    },
+    deps = [
+        "//pkg/core",
+        "//pkg/destinations",
+        "//pkg/mirror",
+        "//pkg/processor",
+        "//pkg/sources",
+        "@com_github_sirupsen_logrus//:logrus",
+    ],
 )
 
+go_test(
+    name = "garf_test",
+    size = "small",
+    srcs = ["garf_test.go"],
+    deps = [
+        ":garf_lib",
+        "@com_github_sirupsen_logrus//:logrus",
+        "@com_github_stretchr_testify//require",
+    ],
+)
+
+# Cross-platform CLI binaries for releases
 cross_platform_go_binary(
     name = "garf-bin",
-    embed = [":garf_lib"],
+    embed = ["//cmd/garf:garf_cli_lib"],
     tags = ["manual"],
-    x_defs = {
-        "github.com/albertocavalcante/garf/cmd.BuildDate": "{BUILD_DATE}",
-        "github.com/albertocavalcante/garf/cmd.CommitHash": "{STABLE_GIT_COMMIT}",
-        "github.com/albertocavalcante/garf/cmd.Version": "{STABLE_VERSION}",
-    },
+    x_defs = _VERSION_STAMP_X_DEFS,
 )
 
-# Create ZIP packages for all Windows architectures with a single call
 windows_bin_zips(
     name = "windows-zips",
     base_name = "garf-bin",
     tags = ["manual"],
-    # Uncomment to override the default architectures
-    # arches = ["amd64", "arm64"],
-    # Uncomment to override the development version
-    # dev_version = "1.2.3",
 )
