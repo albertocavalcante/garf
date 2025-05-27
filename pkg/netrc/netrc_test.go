@@ -104,6 +104,7 @@ func TestParseNetrcScenarios(t *testing.T) {
 			login, pass, found, err := netrc.ParseNetrcFile(tt.content, tt.host)
 			require.NoError(t, err)
 			require.Equal(t, tt.expectFound, found)
+
 			if tt.expectFound {
 				require.Equal(t, tt.expectLogin, login)
 				require.Equal(t, tt.expectPass, pass)

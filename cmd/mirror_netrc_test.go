@@ -3,6 +3,7 @@ package cmd_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/albertocavalcante/garf/cmd"
@@ -15,10 +16,12 @@ func TestGetJFrogCredentialsPrecedenceAndErrors(t *testing.T) {
 	netrcContent := "machine art.example.com login netrcuser password netrcpass\n"
 	netrcPath := testutil.CreateTemporaryNetrc(t, netrcContent)
 
-	// Create a .netrc file with invalid permissions for the error test
+	// Create a .netrc file with invalid permissions for the error test (Unix only)
 	invalidNetrcPath := testutil.CreateTemporaryNetrc(t, "machine art.example.com login user password pass")
-	// Make it readable by others to trigger permission error (on Unix systems)
-	require.NoError(t, os.Chmod(invalidNetrcPath, 0o644))
+	if runtime.GOOS != "windows" {
+		// Make it readable by others to trigger permission error (on Unix systems)
+		require.NoError(t, os.Chmod(invalidNetrcPath, 0o644))
+	}
 
 	testCases := []struct {
 		name     string
@@ -65,12 +68,6 @@ func TestGetJFrogCredentialsPrecedenceAndErrors(t *testing.T) {
 			wantPass: "flagpass",
 		},
 		{
-			name:    "partial env credentials with netrc error",
-			flags:   cmd.MirrorFlags{},
-			env:     map[string]string{"NETRC": invalidNetrcPath, "JFROG_USER": "envuser"},
-			wantErr: "JFrog password is required and .netrc lookup failed",
-		},
-		{
 			name:     "partial env credentials with working netrc",
 			flags:    cmd.MirrorFlags{},
 			env:      map[string]string{"NETRC": netrcPath, "JFROG_USER": "envuser"},
@@ -84,6 +81,23 @@ func TestGetJFrogCredentialsPrecedenceAndErrors(t *testing.T) {
 			wantUser: "netrcuser", // User comes from netrc
 			wantPass: "envpass",
 		},
+	}
+
+	// Add permission-based error test only for Unix systems
+	if runtime.GOOS != "windows" {
+		testCases = append(testCases, struct {
+			name     string
+			flags    cmd.MirrorFlags
+			env      map[string]string
+			wantUser string
+			wantPass string
+			wantErr  string
+		}{
+			name:    "partial env credentials with netrc permission error",
+			flags:   cmd.MirrorFlags{},
+			env:     map[string]string{"NETRC": invalidNetrcPath, "JFROG_USER": "envuser"},
+			wantErr: "JFrog password is required and .netrc lookup failed",
+		})
 	}
 
 	jfrogURL := "https://art.example.com/artifactory"
