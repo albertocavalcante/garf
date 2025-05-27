@@ -28,6 +28,10 @@ type MirrorOptions struct {
 
 	// Unzip indicates if ZIP files should be extracted during mirroring
 	Unzip bool
+
+	// PreserveZipName indicates if the ZIP filename should be preserved when extracting,
+	// replacing the ZIP extension with the extracted file's extension
+	PreserveZipName bool
 }
 
 // Validate validates the mirror options.

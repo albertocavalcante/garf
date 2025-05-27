@@ -32,6 +32,7 @@ type MirrorFlags struct {
 	Raw                    bool
 	Properties             []string
 	Unzip                  bool
+	PreserveZipName        bool
 	DryRun                 bool
 	DryRunMode             string
 	JFrogURL               string
@@ -143,6 +144,12 @@ func setupMirrorFlags(cmd *cobra.Command, flags *MirrorFlags) {
 		"unzip",
 		false,
 		"Unzip and upload content if source is a zip file with a single file inside",
+	)
+	cmd.Flags().BoolVar(
+		&flags.PreserveZipName,
+		"preserve-zip-name",
+		false,
+		"Preserve the ZIP filename when extracting, replacing the ZIP extension with the extracted file's extension",
 	)
 	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "Perform a dry run without making actual changes")
 	cmd.Flags().StringVar(
@@ -522,12 +529,13 @@ func createArtifactAndOptions(flags *MirrorFlags, cfg *config.Config) (*core.Art
 	_ = cancel // Prevent linter warnings about unused variables
 
 	opts := &core.MirrorOptions{
-		Context:    ctx,
-		Raw:        flags.Raw,
-		Concurrent: defaultConcurrent,
-		DryRun:     flags.DryRun,
-		DryRunMode: flags.DryRunMode,
-		Unzip:      flags.Unzip,
+		Context:         ctx,
+		Raw:             flags.Raw,
+		Concurrent:      defaultConcurrent,
+		DryRun:          flags.DryRun,
+		DryRunMode:      flags.DryRunMode,
+		Unzip:           flags.Unzip,
+		PreserveZipName: flags.PreserveZipName,
 	}
 
 	return artifact, opts
