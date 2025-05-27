@@ -175,6 +175,8 @@ func getSimplePathTestCases() []urlHandlingTestCase {
 			raw:      false,
 			pathChecks: []string{
 				"/generic-local/github.com/example/repo/v1.0.0/test-artifact.zip",
+				"prop1=value1",
+				"prop2=value2",
 			},
 		},
 		{
@@ -183,6 +185,9 @@ func getSimplePathTestCases() []urlHandlingTestCase {
 			raw:      true,
 			pathChecks: []string{
 				"/generic-local/github.com/example/repo/releases/download/",
+				"v1.0.0/test-artifact.zip",
+				"prop1=value1",
+				"prop2=value2",
 			},
 		},
 	}
@@ -197,6 +202,8 @@ func getNestedPathTestCases() []urlHandlingTestCase {
 			raw:      false,
 			pathChecks: []string{
 				"/generic/sandbox-mirror/github.com/example/repo/v1.0.0/test-artifact.zip",
+				"prop1=value1",
+				"prop2=value2",
 			},
 		},
 		{
@@ -205,6 +212,9 @@ func getNestedPathTestCases() []urlHandlingTestCase {
 			raw:      true,
 			pathChecks: []string{
 				"/generic/sandbox-mirror/github.com/example/repo/releases/download/",
+				"v1.0.0/test-artifact.zip",
+				"prop1=value1",
+				"prop2=value2",
 			},
 		},
 	}
