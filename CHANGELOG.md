@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/albertocavalcante/garf/compare/v0.3.1...v0.3.2) (2025-05-27)
+
+
+### Bug Fixes
+
+* zip extraction during mirror phase ([#97](https://github.com/albertocavalcante/garf/issues/97)) ([a9797d9](https://github.com/albertocavalcante/garf/commit/a9797d999b75a88fd4451ea9cadc49a3bfc26083))
+
 ## [0.3.1](https://github.com/albertocavalcante/garf/compare/v0.3.0...v0.3.1) (2025-05-27)
 
 
