@@ -6,29 +6,37 @@
 //
 // Basic usage:
 //
-//	client := garf.NewClient(garf.Config{
+//	client, err := garf.NewClient(garf.Config{
 //		JFrogURL:      "https://mycompany.jfrog.io/artifactory",
 //		JFrogUser:     "username",
 //		JFrogPassword: "password",
 //	})
+//	if err != nil {
+//		log.Fatal(err)
+//	}
 //
-//	err := client.Mirror(ctx, garf.MirrorRequest{
+//	result, err := client.Mirror(ctx, garf.MirrorRequest{
 //		Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
 //		Destination: "my-generic-repo",
 //		Properties:  map[string]string{"type": "binary", "platform": "linux"},
-//		Unzip:       true,
+//		Unzip:       true, // Extract single files from zip archives
 //	})
+//	if err != nil {
+//		log.Fatal(err)
+//	}
 package garf
 
 import (
 	"context"
 	"fmt"
-	"strings"
+	"net/url"
+	"path"
 	"time"
 
 	"github.com/albertocavalcante/garf/pkg/core"
 	"github.com/albertocavalcante/garf/pkg/destinations"
 	"github.com/albertocavalcante/garf/pkg/mirror"
+	"github.com/albertocavalcante/garf/pkg/processor"
 	"github.com/albertocavalcante/garf/pkg/sources"
 	"github.com/sirupsen/logrus"
 )
@@ -59,6 +67,12 @@ type Config struct {
 	Concurrent int
 }
 
+// String implements fmt.Stringer to prevent accidental credential logging.
+func (c Config) String() string {
+	return fmt.Sprintf("Config{JFrogURL: %s, JFrogUser: %s, JFrogPassword: [REDACTED], Timeout: %v, Concurrent: %d}",
+		c.JFrogURL, c.JFrogUser, c.Timeout, c.Concurrent)
+}
+
 // MirrorRequest represents a single mirror operation request.
 type MirrorRequest struct {
 	// Source URL of the artifact to mirror
@@ -78,6 +92,7 @@ type MirrorRequest struct {
 
 	// Optional: Local file path to upload instead of downloading from source
 	// The source URL is still used for coordinate extraction
+	// TODO: This feature is not yet implemented
 	FromFile string
 
 	// Optional: Dry run mode - "all" skips everything, "upload" skips only upload
@@ -127,6 +142,12 @@ func NewClient(config Config) (*Client, error) {
 	// Create mirror instance
 	mirrorInstance := mirror.NewDefaultMirror(config.Logger)
 
+	// Setup source once during client creation
+	githubSource := sources.NewGitHubSource(config.Logger)
+	if err := mirrorInstance.AddSource("github", githubSource); err != nil {
+		return nil, fmt.Errorf("failed to add source: %w", err)
+	}
+
 	client := &Client{
 		Config: config,
 		logger: config.Logger,
@@ -142,20 +163,16 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 		return nil, fmt.Errorf("invalid request: %w", err)
 	}
 
-	// Create context with timeout
+	// Create context with timeout if not already set or if our timeout is shorter
 	if c.Config.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, c.Config.Timeout)
-		defer cancel()
+		if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > c.Config.Timeout {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, c.Config.Timeout)
+			defer cancel()
+		}
 	}
 
-	// Setup source
-	githubSource := sources.NewGitHubSource(c.logger)
-	if err := c.mirror.AddSource("github", githubSource); err != nil {
-		return nil, fmt.Errorf("failed to add source: %w", err)
-	}
-
-	// Setup destination
+	// Setup destination (needs to be per-request since destination path varies)
 	jfrogConfig := destinations.JFrogConfig{
 		URL:      c.Config.JFrogURL,
 		User:     c.Config.JFrogUser,
@@ -164,7 +181,9 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 	}
 
 	jfrogDest := destinations.NewJFrogDestination(jfrogConfig, c.logger)
-	if err := c.mirror.AddDestination("jfrog", jfrogDest); err != nil {
+	// Use a unique destination name for each request to avoid conflicts
+	destName := fmt.Sprintf("jfrog-%d", time.Now().UnixNano())
+	if err := c.mirror.AddDestination(destName, jfrogDest); err != nil {
 		return nil, fmt.Errorf("failed to add destination: %w", err)
 	}
 
@@ -189,7 +208,31 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 
 	// Wait for result
 	select {
-	case result := <-results:
+	case result, ok := <-results:
+		if !ok {
+			return nil, fmt.Errorf("mirror operation completed without result")
+		}
+
+		// If there was an error during mirroring, return it
+		if result.Error != nil {
+			return &MirrorResult{
+				Source:          request.Source,
+				DestinationPath: result.DestinationPath,
+				Error:           result.Error,
+			}, nil
+		}
+
+		// If unzip is enabled, process the artifact
+		if request.Unzip {
+			if err := processor.ProcessArtifact(ctx, c.logger, c.mirror, result.Artifact, opts); err != nil {
+				return &MirrorResult{
+					Source:          request.Source,
+					DestinationPath: result.DestinationPath,
+					Error:           fmt.Errorf("failed to process artifact: %w", err),
+				}, nil
+			}
+		}
+
 		return &MirrorResult{
 			Source:          request.Source,
 			DestinationPath: result.DestinationPath,
@@ -214,6 +257,14 @@ func ValidateConfig(config Config) error {
 		return fmt.Errorf("JFrogPassword is required")
 	}
 
+	if config.Timeout < 0 {
+		return fmt.Errorf("timeout cannot be negative")
+	}
+
+	if config.Concurrent < 0 {
+		return fmt.Errorf("concurrent cannot be negative")
+	}
+
 	return nil
 }
 
@@ -227,7 +278,8 @@ func (c *Client) ValidateRequest(request MirrorRequest) error {
 		return fmt.Errorf("destination is required")
 	}
 
-	if request.DryRun && request.DryRunMode != "" {
+	// Validate DryRunMode if specified, regardless of DryRun flag
+	if request.DryRunMode != "" {
 		validModes := map[string]bool{"all": true, "upload": true}
 		if !validModes[request.DryRunMode] {
 			return fmt.Errorf("invalid dry run mode: %s. Valid modes are: all, upload", request.DryRunMode)
@@ -238,23 +290,23 @@ func (c *Client) ValidateRequest(request MirrorRequest) error {
 }
 
 // ExtractArtifactName extracts the artifact name from a URL.
-func ExtractArtifactName(url string) string {
+func ExtractArtifactName(urlStr string) string {
 	// Handle empty URL
-	if url == "" {
+	if urlStr == "" {
 		return UnknownArtifactName
 	}
 
-	// This is a simplified implementation
-	// In a real implementation, you'd use the urlprocessor package
-	parts := strings.Split(url, "/")
-	if len(parts) > 0 {
-		lastPart := parts[len(parts)-1]
-		if lastPart == "" {
-			return UnknownArtifactName
-		}
-
-		return lastPart
+	// Parse the URL to handle edge cases properly
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return UnknownArtifactName
 	}
 
-	return UnknownArtifactName
+	// Extract the base name from the path
+	name := path.Base(u.Path)
+	if name == "" || name == "." || name == "/" {
+		return UnknownArtifactName
+	}
+
+	return name
 }

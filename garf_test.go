@@ -111,7 +111,7 @@ func TestExtractArtifactName(t *testing.T) {
 		{
 			name:     "url with query params",
 			url:      "https://example.com/path/file.exe?version=1.0",
-			expected: "file.exe?version=1.0",
+			expected: "file.exe",
 		},
 		{
 			name:     "empty url",
