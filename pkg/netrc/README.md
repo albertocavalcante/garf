@@ -24,7 +24,7 @@ if err != nil {
 }
 if found {
     fmt.Printf("User: %s\n", creds.Login)
-    fmt.Printf("Password: %s\n", creds.Password)
+    // Use credentials securely
 }
 ```
 
