@@ -144,6 +144,20 @@ func (d *JFrogDestination) buildArtifactPath(artifact *core.Artifact, targetURL 
 	structuredPath := d.pathBuilder.ProcessURL(sourceURL, raw)
 	logger.WithField("structured_path", structuredPath).Debug("Generated structured path from URL processor")
 
+	// Replace the filename in the structured path with the artifact name
+	// This is important for cases like ZIP extraction where the artifact name
+	// might be different from the filename in the URL
+	structuredDir := path.Dir(structuredPath)
+	if structuredDir == "." {
+		// If there's no directory structure, just use the artifact name
+		structuredPath = artifact.Name
+	} else {
+		// Replace the filename with the artifact name
+		structuredPath = path.Join(structuredDir, artifact.Name)
+	}
+
+	logger.WithField("final_structured_path", structuredPath).Debug("Updated structured path with artifact name")
+
 	artifactPath := path.Join(targetURL.Path, d.config.DestPath, structuredPath)
 	logger.WithField("final_artifact_path", artifactPath).Debug("Built final artifact path")
 

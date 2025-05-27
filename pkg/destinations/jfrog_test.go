@@ -174,7 +174,7 @@ func getSimplePathTestCases() []urlHandlingTestCase {
 			destPath: "generic-local",
 			raw:      false,
 			pathChecks: []string{
-				"/generic-local/github.com/example/repo/v1.0.0/test-artifact.zip",
+				"/generic-local/github.com/example/repo/v1.0.0/test-artifact",
 				"prop1=value1",
 				"prop2=value2",
 			},
@@ -185,7 +185,7 @@ func getSimplePathTestCases() []urlHandlingTestCase {
 			raw:      true,
 			pathChecks: []string{
 				"/generic-local/github.com/example/repo/releases/download/",
-				"v1.0.0/test-artifact.zip",
+				"v1.0.0/test-artifact",
 				"prop1=value1",
 				"prop2=value2",
 			},
@@ -201,7 +201,7 @@ func getNestedPathTestCases() []urlHandlingTestCase {
 			destPath: "generic/sandbox-mirror",
 			raw:      false,
 			pathChecks: []string{
-				"/generic/sandbox-mirror/github.com/example/repo/v1.0.0/test-artifact.zip",
+				"/generic/sandbox-mirror/github.com/example/repo/v1.0.0/test-artifact",
 				"prop1=value1",
 				"prop2=value2",
 			},
@@ -212,7 +212,7 @@ func getNestedPathTestCases() []urlHandlingTestCase {
 			raw:      true,
 			pathChecks: []string{
 				"/generic/sandbox-mirror/github.com/example/repo/releases/download/",
-				"v1.0.0/test-artifact.zip",
+				"v1.0.0/test-artifact",
 				"prop1=value1",
 				"prop2=value2",
 			},
@@ -305,14 +305,14 @@ func getTargetURLTestCases() []struct {
 			name:       "simple path",
 			modifyConf: func(c *destinations.JFrogConfig) {},
 			urlChecks: []string{
-				"/generic-local/github.com/example/repo/v1.0.0/test-artifact.zip",
+				"/generic-local/github.com/example/repo/v1.0.0/test-artifact",
 			},
 		},
 		{
 			name:       "with properties",
 			modifyConf: func(c *destinations.JFrogConfig) { c.DestPath = "generic/sandbox-mirror" },
 			urlChecks: []string{
-				"/generic/sandbox-mirror/github.com/example/repo/v1.0.0/test-artifact.zip",
+				"/generic/sandbox-mirror/github.com/example/repo/v1.0.0/test-artifact",
 				";platform=linux",
 				";type=binary",
 			},
@@ -409,7 +409,7 @@ func TestJFrogDestinationExists(t *testing.T) {
 		}
 
 		// The path should match what PathBuilder generates
-		if strings.Contains(r.URL.Path, "/generic-local/github.com/example/repo/v1.0.0/test-artifact.zip") {
+		if strings.Contains(r.URL.Path, "/generic-local/github.com/example/repo/v1.0.0/test-artifact") {
 			w.WriteHeader(http.StatusOK)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
@@ -437,4 +437,33 @@ func TestJFrogDestinationExists(t *testing.T) {
 			require.Equal(t, tt.exists, exists)
 		})
 	}
+}
+
+func TestJFrogDestinationArtifactNameInPath(t *testing.T) {
+	env := setupTestEnv(t)
+	env.setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	})
+	defer env.cleanup()
+
+	// Test case where artifact name differs from URL filename
+	// This simulates the preserve-zip-name scenario
+	artifact := &core.Artifact{
+		Name:     "bazel_nojdk-8.2.1-windows-x86_64.exe", // Different from URL filename
+		Version:  "8.2.1",
+		Location: "https://github.com/bazelbuild/bazel/releases/download/8.2.1/bazel_nojdk-8.2.1-windows-x86_64.zip",
+		Metadata: map[string]string{
+			"type": "binary",
+		},
+	}
+
+	dest := destinations.NewJFrogDestination(env.config, env.logger)
+	err := dest.Put(context.Background(), artifact, strings.NewReader("test content"), false)
+	require.NoError(t, err)
+
+	// Verify that the path contains the artifact name (.exe) not the URL filename (.zip)
+	require.Contains(t, env.lastPath, "bazel_nojdk-8.2.1-windows-x86_64.exe")
+	require.NotContains(t, env.lastPath, "bazel_nojdk-8.2.1-windows-x86_64.zip")
+	require.Contains(t, env.lastPath, "/generic-local/github.com/bazelbuild/bazel/8.2.1/bazel_nojdk-8.2.1-windows-x86_64.exe")
+	require.Contains(t, env.lastPath, "type=binary")
 }
