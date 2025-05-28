@@ -1,6 +1,7 @@
 package urlprocessor
 
 import (
+	"fmt"
 	"net/url"
 	"path"
 	"strings"
@@ -54,42 +55,84 @@ func (p *GitHubProcessor) Process(sourceURL *url.URL, raw bool) string {
 
 	// Parse the GitHub path components
 	pathParts := strings.Split(strings.TrimPrefix(sourceURL.Path, "/"), "/")
-	logger.WithField("path_parts", pathParts).Debug("Split URL path into components")
+	logger.WithFields(logrus.Fields{
+		"path_parts":       pathParts,
+		"path_parts_count": len(pathParts),
+	}).Debug("Split URL path into components")
 
-	// Check if this is a GitHub release URL
-	if len(pathParts) >= 5 && pathParts[2] == "releases" && pathParts[3] == "download" {
-		logger.Debug("Detected GitHub release URL format")
+	// Check if this is a standard GitHub release URL (owner/repo/releases/download/version/filename)
+	if len(pathParts) >= 6 && pathParts[2] == "releases" && pathParts[3] == "download" {
+		logger.Debug("Detected standard GitHub release URL format")
+
+		owner := pathParts[0]
+		repo := pathParts[1]
+		version := pathParts[4]
+
+		logger.WithFields(logrus.Fields{
+			"owner":    owner,
+			"repo":     repo,
+			"version":  version,
+			"filename": filename,
+		}).Debug("Extracted GitHub release components from standard URL")
 
 		if raw {
-			// Raw mode: Keep the full GitHub path structure
-			result := path.Join(core.GitHubHost, strings.TrimPrefix(sourceURL.Path, "/"))
-			logger.WithField("result_path", result).Info("Built raw GitHub path")
-
+			result := fmt.Sprintf("github.com/%s/%s/releases/download/%s/%s", owner, repo, version, filename)
+			logger.WithField("result_path", result).Info("Built raw GitHub path from standard release URL")
 			return result
 		} else {
-			// Clean mode: Create a structured path
-			owner := pathParts[0]
-			repo := pathParts[1]
-			version := pathParts[4]
-
-			logger.WithFields(logrus.Fields{
-				"owner":    owner,
-				"repo":     repo,
-				"version":  version,
-				"filename": filename,
-			}).Debug("Extracted GitHub release components")
-
-			// Build path: github.com/owner/repo/version/filename
-			result := path.Join(core.GitHubHost, owner, repo, version, filename)
-			logger.WithField("result_path", result).Info("Built structured GitHub path")
-
+			result := fmt.Sprintf("github.com/%s/%s/%s/%s", owner, repo, version, filename)
+			logger.WithField("result_path", result).Info("Built structured GitHub path from standard release URL")
 			return result
 		}
 	}
 
-	// For other GitHub URLs, use the filename
-	logger.Debug("Not a GitHub release URL, using filename only")
-	logger.WithField("result_path", filename).Info("Using filename as path")
+	// Check if this is a stripped GitHub URL with coordinates (owner/repo/version/filename)
+	// This handles URLs that have been processed by source path stripping
+	if len(pathParts) >= 3 {
+		logger.WithFields(logrus.Fields{
+			"path_parts":       pathParts,
+			"path_parts_count": len(pathParts),
+		}).Debug("Checking for stripped GitHub URL pattern")
 
+		// Try to detect if this looks like owner/repo/version/filename pattern
+		// We can identify this by checking if the third component looks like a version
+		if len(pathParts) >= 4 {
+			owner := pathParts[0]
+			repo := pathParts[1]
+			potentialVersion := pathParts[2]
+
+			// Check if the third component looks like a version (contains digits or dots or starts with 'v')
+			isVersion := strings.Contains(potentialVersion, ".") ||
+				strings.HasPrefix(potentialVersion, "v") ||
+				strings.ContainsAny(potentialVersion, "0123456789")
+
+			if isVersion {
+				logger.WithFields(logrus.Fields{
+					"owner":             owner,
+					"repo":              repo,
+					"potential_version": potentialVersion,
+					"filename":          filename,
+				}).Debug("Detected stripped GitHub URL with version pattern")
+
+				result := fmt.Sprintf("github.com/%s/%s/%s/%s", owner, repo, potentialVersion, filename)
+				logger.WithField("result_path", result).Info("Built structured GitHub path from stripped URL coordinates")
+				return result
+			}
+		}
+
+		// If we have at least 3 parts but it doesn't look like a version pattern,
+		// treat it as owner/repo/filename (fallback for non-standard patterns)
+		if len(pathParts) >= 3 {
+			owner := pathParts[0]
+			repo := pathParts[1]
+
+			result := fmt.Sprintf("github.com/%s/%s/%s", owner, repo, filename)
+			logger.WithField("result_path", result).Info("Built structured GitHub path from owner/repo pattern")
+			return result
+		}
+	}
+
+	// Fallback: if we can't parse the structure, just return the filename
+	logger.WithField("result_path", filename).Info("Using filename as fallback for unrecognized GitHub URL pattern")
 	return filename
 }
