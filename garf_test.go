@@ -12,6 +12,67 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Test helper functions to reduce code duplication
+
+// createTestClient creates a standard test client with default configuration.
+func createTestClient(t *testing.T) *garf.Client {
+	t.Helper()
+	client, err := garf.NewClient(garf.Config{
+		JFrogURL:      "https://test.jfrog.io/artifactory",
+		JFrogUser:     "testuser",
+		JFrogPassword: "testpass",
+	})
+	require.NoError(t, err)
+	return client
+}
+
+// createDryRunRequest creates a standard dry run mirror request.
+func createDryRunRequest(source, destination string) garf.MirrorRequest {
+	return garf.MirrorRequest{
+		Source:      source,
+		Destination: destination,
+		DryRun:      true,
+		DryRunMode:  "all",
+	}
+}
+
+// createDryRunRequestWithStrip creates a dry run mirror request with source path stripping.
+func createDryRunRequestWithStrip(source, destination, sourcePathStrip string) garf.MirrorRequest {
+	return garf.MirrorRequest{
+		Source:          source,
+		Destination:     destination,
+		SourcePathStrip: sourcePathStrip,
+		DryRun:          true,
+		DryRunMode:      "all",
+	}
+}
+
+// runConcurrentMirrorTest runs a concurrent test with the given number of goroutines and iterations.
+func runConcurrentMirrorTest(t *testing.T, client *garf.Client, numGoroutines, numIterations int, requestFunc func(int, int) garf.MirrorRequest) {
+	t.Helper()
+	ctx := context.Background()
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			<-start // Wait for signal to start
+
+			for j := 0; j < numIterations; j++ {
+				request := requestFunc(id, j)
+				_, err := client.Mirror(ctx, request)
+				require.NoError(t, err)
+			}
+		}(i)
+	}
+
+	// Start all goroutines at once
+	close(start)
+	wg.Wait()
+}
+
 func TestNewClient(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -191,122 +252,9 @@ func TestValidateConfig(t *testing.T) {
 	}
 }
 
-func TestClient_validateRequest(t *testing.T) {
-	client, err := garf.NewClient(garf.Config{
-		JFrogURL:      "https://test.jfrog.io/artifactory",
-		JFrogUser:     "testuser",
-		JFrogPassword: "testpass",
-	})
-	require.NoError(t, err)
-
-	tests := []struct {
-		name        string
-		request     garf.MirrorRequest
-		expectError bool
-		errorMsg    string
-	}{
-		{
-			name: "valid request",
-			request: garf.MirrorRequest{
-				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination: "my-repo",
-			},
-			expectError: false,
-		},
-		{
-			name: "missing source",
-			request: garf.MirrorRequest{
-				Destination: "my-repo",
-			},
-			expectError: true,
-			errorMsg:    "source is required",
-		},
-		{
-			name: "missing destination",
-			request: garf.MirrorRequest{
-				Source: "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-			},
-			expectError: true,
-			errorMsg:    "destination is required",
-		},
-		{
-			name: "valid dry run with mode",
-			request: garf.MirrorRequest{
-				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination: "my-repo",
-				DryRun:      true,
-				DryRunMode:  "upload",
-			},
-			expectError: false,
-		},
-		{
-			name: "invalid dry run mode",
-			request: garf.MirrorRequest{
-				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination: "my-repo",
-				DryRun:      true,
-				DryRunMode:  "invalid",
-			},
-			expectError: true,
-			errorMsg:    "invalid dry run mode",
-		},
-		{
-			name: "request with properties",
-			request: garf.MirrorRequest{
-				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination: "my-repo",
-				Properties:  map[string]string{"type": "binary", "platform": "linux"},
-			},
-			expectError: false,
-		},
-		{
-			name: "request with all options",
-			request: garf.MirrorRequest{
-				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination: "my-repo",
-				Properties:  map[string]string{"type": "binary"},
-				Raw:         true,
-				Unzip:       true,
-				FromFile:    "/path/to/local/file",
-				DryRun:      true,
-				DryRunMode:  "all",
-			},
-			expectError: false,
-		},
-		{
-			name: "request with source path stripping",
-			request: garf.MirrorRequest{
-				Source:          "https://artifactory.corp.net/staging/github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination:     "my-repo",
-				SourcePathStrip: "artifactory.corp.net/staging/",
-				Properties:      map[string]string{"type": "binary"},
-			},
-			expectError: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := client.ValidateRequest(tt.request)
-
-			if tt.expectError {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tt.errorMsg)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
 // TestMirrorRequest_Validation tests the MirrorRequest struct validation.
 func TestMirrorRequest_Validation(t *testing.T) {
-	client, err := garf.NewClient(garf.Config{
-		JFrogURL:      "https://test.jfrog.io/artifactory",
-		JFrogUser:     "testuser",
-		JFrogPassword: "testpass",
-	})
-	require.NoError(t, err)
+	client := createTestClient(t)
 
 	// Test that a context timeout is properly handled
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
@@ -357,40 +305,28 @@ func TestMirrorResult_Structure(t *testing.T) {
 }
 
 func TestClient_DestinationCaching(t *testing.T) {
-	client, err := garf.NewClient(garf.Config{
-		JFrogURL:      "https://test.jfrog.io/artifactory",
-		JFrogUser:     "testuser",
-		JFrogPassword: "testpass",
-	})
-	require.NoError(t, err)
-
+	client := createTestClient(t)
 	ctx := context.Background()
 
 	// First call to the same destination
-	_, err = client.Mirror(ctx, garf.MirrorRequest{
-		Source:      "https://github.com/test/repo/releases/download/v1.0.0/file1.txt",
-		Destination: "test-repo",
-		DryRun:      true,
-		DryRunMode:  "all",
-	})
+	_, err := client.Mirror(ctx, createDryRunRequest(
+		"https://github.com/test/repo/releases/download/v1.0.0/file1.txt",
+		"test-repo",
+	))
 	require.NoError(t, err)
 
 	// Second call to the same destination - should reuse cached destination
-	_, err = client.Mirror(ctx, garf.MirrorRequest{
-		Source:      "https://github.com/test/repo/releases/download/v1.0.0/file2.txt",
-		Destination: "test-repo", // Same destination as above
-		DryRun:      true,
-		DryRunMode:  "all",
-	})
+	_, err = client.Mirror(ctx, createDryRunRequest(
+		"https://github.com/test/repo/releases/download/v1.0.0/file2.txt",
+		"test-repo", // Same destination as above
+	))
 	require.NoError(t, err)
 
 	// Third call to a different destination - should create new destination
-	_, err = client.Mirror(ctx, garf.MirrorRequest{
-		Source:      "https://github.com/test/repo/releases/download/v1.0.0/file3.txt",
-		Destination: "different-repo", // Different destination
-		DryRun:      true,
-		DryRunMode:  "all",
-	})
+	_, err = client.Mirror(ctx, createDryRunRequest(
+		"https://github.com/test/repo/releases/download/v1.0.0/file3.txt",
+		"different-repo", // Different destination
+	))
 	require.NoError(t, err)
 
 	// Verify that we have exactly 2 destinations cached
@@ -400,13 +336,7 @@ func TestClient_DestinationCaching(t *testing.T) {
 }
 
 func TestClient_SourcePathStripping(t *testing.T) {
-	client, err := garf.NewClient(garf.Config{
-		JFrogURL:      "https://test.jfrog.io/artifactory",
-		JFrogUser:     "testuser",
-		JFrogPassword: "testpass",
-	})
-	require.NoError(t, err)
-
+	client := createTestClient(t)
 	ctx := context.Background()
 
 	tests := []struct {
@@ -455,13 +385,7 @@ func TestClient_SourcePathStripping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			request := garf.MirrorRequest{
-				Source:          tt.sourceURL,
-				Destination:     tt.destination,
-				SourcePathStrip: tt.sourcePathStrip,
-				DryRun:          true,
-				DryRunMode:      "all", // Skip everything for testing
-			}
+			request := createDryRunRequestWithStrip(tt.sourceURL, tt.destination, tt.sourcePathStrip)
 
 			result, err := client.Mirror(ctx, request)
 
@@ -568,43 +492,18 @@ func TestMirrorRequest_WithSourcePathStrip(t *testing.T) {
 }
 
 func TestClient_RaceConditionInDestinationCaching(t *testing.T) {
-	client, err := garf.NewClient(garf.Config{
-		JFrogURL:      "https://test.jfrog.io/artifactory",
-		JFrogUser:     "testuser",
-		JFrogPassword: "testpass",
-	})
-	require.NoError(t, err)
+	client := createTestClient(t)
 
-	ctx := context.Background()
 	numGoroutines := 100
 	numIterations := 10
 
-	// Use a channel to synchronize goroutine starts
-	start := make(chan struct{})
-	var wg sync.WaitGroup
-
 	// Test concurrent access to the same destination
-	for i := 0; i < numGoroutines; i++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-			<-start // Wait for signal to start
-
-			for j := 0; j < numIterations; j++ {
-				_, err := client.Mirror(ctx, garf.MirrorRequest{
-					Source:      fmt.Sprintf("https://github.com/test/repo/releases/download/v1.0.0/file-%d-%d.txt", id, j),
-					Destination: "test-repo", // Same destination for all
-					DryRun:      true,
-					DryRunMode:  "all",
-				})
-				require.NoError(t, err)
-			}
-		}(i)
-	}
-
-	// Start all goroutines at once
-	close(start)
-	wg.Wait()
+	runConcurrentMirrorTest(t, client, numGoroutines, numIterations, func(id, j int) garf.MirrorRequest {
+		return createDryRunRequest(
+			fmt.Sprintf("https://github.com/test/repo/releases/download/v1.0.0/file-%d-%d.txt", id, j),
+			"test-repo", // Same destination for all
+		)
+	})
 
 	// Verify that we have exactly 1 destination cached (no race condition corruption)
 	require.Equal(t, 1, client.GetCachedDestinationsCount())
@@ -667,12 +566,7 @@ func TestClient_RaceConditionWithDifferentSourcePathStrip(t *testing.T) {
 }
 
 func TestClient_ValidateRequest(t *testing.T) {
-	client, err := garf.NewClient(garf.Config{
-		JFrogURL:      "https://test.jfrog.io/artifactory",
-		JFrogUser:     "testuser",
-		JFrogPassword: "testpass",
-	})
-	require.NoError(t, err)
+	client := createTestClient(t)
 
 	tests := []struct {
 		name        string
@@ -705,14 +599,58 @@ func TestClient_ValidateRequest(t *testing.T) {
 			errorMsg:    "destination is required",
 		},
 		{
+			name: "valid dry run with mode",
+			request: garf.MirrorRequest{
+				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+				Destination: "my-repo",
+				DryRun:      true,
+				DryRunMode:  "upload",
+			},
+			expectError: false,
+		},
+		{
 			name: "invalid dry run mode",
 			request: garf.MirrorRequest{
 				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
 				Destination: "my-repo",
+				DryRun:      true,
 				DryRunMode:  "invalid",
 			},
 			expectError: true,
 			errorMsg:    "invalid dry run mode",
+		},
+		{
+			name: "request with properties",
+			request: garf.MirrorRequest{
+				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+				Destination: "my-repo",
+				Properties:  map[string]string{"type": "binary", "platform": "linux"},
+			},
+			expectError: false,
+		},
+		{
+			name: "request with all options",
+			request: garf.MirrorRequest{
+				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+				Destination: "my-repo",
+				Properties:  map[string]string{"type": "binary"},
+				Raw:         true,
+				Unzip:       true,
+				FromFile:    "/path/to/local/file",
+				DryRun:      true,
+				DryRunMode:  "all",
+			},
+			expectError: false,
+		},
+		{
+			name: "request with source path stripping",
+			request: garf.MirrorRequest{
+				Source:          "https://artifactory.corp.net/staging/github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+				Destination:     "my-repo",
+				SourcePathStrip: "artifactory.corp.net/staging/",
+				Properties:      map[string]string{"type": "binary"},
+			},
+			expectError: false,
 		},
 		{
 			name: "valid source path strip",
