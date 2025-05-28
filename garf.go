@@ -43,7 +43,6 @@ import (
 	"fmt"
 	"net/url"
 	"path"
-	"strings"
 	"sync"
 	"time"
 
@@ -165,10 +164,15 @@ func NewClient(config Config) (*Client, error) {
 	// Create mirror instance
 	mirrorInstance := mirror.NewDefaultMirror(config.Logger)
 
-	// Setup source once during client creation
+	// Setup both GitHub and generic sources
 	githubSource := sources.NewGitHubSource(config.Logger)
-	if err := mirrorInstance.AddSource("github", githubSource); err != nil {
-		return nil, fmt.Errorf("failed to add source: %w", err)
+	if err := mirrorInstance.AddSource(core.SourceTypeGitHub, githubSource); err != nil {
+		return nil, fmt.Errorf("failed to add GitHub source: %w", err)
+	}
+
+	genericSource := sources.NewGenericSource(config.Logger)
+	if err := mirrorInstance.AddSource(core.SourceTypeGeneric, genericSource); err != nil {
+		return nil, fmt.Errorf("failed to add generic source: %w", err)
 	}
 
 	client := &Client{
@@ -202,6 +206,12 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 			ctx, cancel = context.WithTimeout(ctx, c.Config.Timeout)
 			defer cancel()
 		}
+	}
+
+	// Detect source type and ensure the appropriate source is available
+	sourceType := c.DetectSourceType(request.Source, request.SourcePathStrip)
+	if err := c.EnsureSourceAvailable(sourceType); err != nil {
+		return nil, fmt.Errorf("failed to setup source: %w", err)
 	}
 
 	// Create destination key for caching (includes source path strip config)
@@ -252,6 +262,7 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 		Concurrent: c.Config.Concurrent,
 		DryRun:     request.DryRun,
 		DryRunMode: request.DryRunMode,
+		Unzip:      request.Unzip,
 	}
 
 	// Perform mirror operation
@@ -330,24 +341,13 @@ func (c *Client) ValidateRequest(request MirrorRequest) error {
 	}
 
 	// Validate DryRunMode if specified, regardless of DryRun flag
-	if request.DryRunMode != "" {
-		validModes := map[string]bool{"all": true, "upload": true}
-		if !validModes[request.DryRunMode] {
-			return fmt.Errorf("invalid dry run mode: %s. Valid modes are: all, upload", request.DryRunMode)
-		}
+	if err := core.ValidateDryRunMode(request.DryRunMode); err != nil {
+		return err
 	}
 
 	// Validate SourcePathStrip if specified
-	if request.SourcePathStrip != "" {
-		// Check for invalid characters that could cause issues
-		if strings.Contains(request.SourcePathStrip, "..") {
-			return fmt.Errorf("source path strip cannot contain '..' for security reasons")
-		}
-
-		// Ensure it doesn't start with a scheme (should be a path/host component)
-		if strings.HasPrefix(request.SourcePathStrip, "http://") || strings.HasPrefix(request.SourcePathStrip, "https://") {
-			return fmt.Errorf("source path strip should not include the URL scheme (http:// or https://)")
-		}
+	if err := core.ValidateSourcePathStrip(request.SourcePathStrip); err != nil {
+		return err
 	}
 
 	return nil
@@ -392,14 +392,9 @@ func (c *Client) IsCachedDestination(key string) bool {
 
 // createDestination creates a new JFrog destination with the given configuration.
 func (c *Client) createDestination(destPath, sourcePathStrip string) (core.Destination, error) {
-	// Validate sourcePathStrip parameter
-	if sourcePathStrip != "" {
-		if strings.Contains(sourcePathStrip, "..") {
-			return nil, fmt.Errorf("source path strip cannot contain '..' for security reasons")
-		}
-		if strings.HasPrefix(sourcePathStrip, "http://") || strings.HasPrefix(sourcePathStrip, "https://") {
-			return nil, fmt.Errorf("source path strip should not include the URL scheme")
-		}
+	// Validate sourcePathStrip parameter using centralized validation
+	if err := core.ValidateSourcePathStrip(sourcePathStrip); err != nil {
+		return nil, err
 	}
 
 	jfrogConfig := destinations.JFrogConfig{
@@ -411,4 +406,23 @@ func (c *Client) createDestination(destPath, sourcePathStrip string) (core.Desti
 	}
 
 	return destinations.NewJFrogDestination(jfrogConfig, c.logger), nil
+}
+
+// DetectSourceType determines the source type based on the URL.
+// When SourcePathStrip is provided, it strips the prefix first to determine the actual source.
+func (c *Client) DetectSourceType(sourceURL, sourcePathStrip string) string {
+	return core.DetectSourceType(sourceURL, sourcePathStrip)
+}
+
+// EnsureSourceAvailable ensures that the appropriate source is available in the mirror.
+func (c *Client) EnsureSourceAvailable(sourceType string) error {
+	// Check if the source is already available
+	_, err := c.mirror.GetSource(sourceType)
+	if err == nil {
+		// Source is already available
+		return nil
+	}
+
+	// Source not found, this shouldn't happen since we set up both sources in NewClient
+	return fmt.Errorf("source type %s is not available", sourceType)
 }

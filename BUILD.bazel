@@ -18,7 +18,7 @@ alias(
 
 alias(
     name = "garf",
-    actual = "//cmd/garf:garf"
+    actual = "//cmd/garf:garf",
 )
 
 # gazelle:proto disable_global

@@ -2,7 +2,11 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "sources",
-    srcs = ["github.go"],
+    srcs = [
+        "common.go",
+        "generic.go",
+        "github.go",
+    ],
     importpath = "github.com/albertocavalcante/garf/pkg/sources",
     visibility = ["//visibility:public"],
     deps = [

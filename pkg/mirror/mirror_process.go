@@ -16,11 +16,13 @@ import (
 func SetupSource(logger *logrus.Logger, config *config.Config) (core.Source, error) {
 	var source core.Source
 
-	switch config.Source.Type {
-	case "github":
+	switch sourceType := config.Source.Type; sourceType {
+	case core.SourceTypeGitHub:
 		source = sources.NewGitHubSource(logger)
+	case core.SourceTypeGeneric:
+		source = sources.NewGenericSource(logger)
 	default:
-		return nil, fmt.Errorf("unsupported source type: %s", config.Source.Type)
+		return nil, fmt.Errorf("unsupported source type: %s", sourceType)
 	}
 
 	if err := source.Validate(); err != nil {

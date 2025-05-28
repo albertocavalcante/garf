@@ -47,10 +47,7 @@ type MirrorFlags struct {
 // This method is added for test compatibility.
 func (f *MirrorFlags) ValidateDryRunMode() error {
 	if f.DryRun {
-		validModes := map[string]bool{"all": true, "upload": true}
-		if !validModes[f.DryRunMode] {
-			return fmt.Errorf("invalid dry run mode: %s. Valid modes are: all, upload", f.DryRunMode)
-		}
+		return core.ValidateDryRunMode(f.DryRunMode)
 	}
 
 	return nil
@@ -309,6 +306,12 @@ func loadConfigFromFile(configFile string) (*config.Config, error) {
 	return cfg, nil
 }
 
+// detectSourceType determines the source type based on the URL.
+// When SourcePathStrip is provided, it strips the prefix first to determine the actual source.
+func detectSourceType(sourceURL, sourcePathStrip string) string {
+	return core.DetectSourceType(sourceURL, sourcePathStrip)
+}
+
 // buildConfigFromFlags creates configuration from flags and environment variables.
 func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
 	// Setup viper for environment variables
@@ -330,7 +333,7 @@ func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
 	// Create config
 	cfg := &config.Config{
 		Source: config.SourceConfig{
-			Type: "github",
+			Type: detectSourceType(flags.Source, flags.SourcePathStrip),
 			URL:  flags.Source,
 		},
 		Destination: config.DestinationConfig{

@@ -532,3 +532,57 @@ func TestSourcePathStripValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestSourceTypeDetection(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.cleanup()
+
+	testCases := []struct {
+		name               string
+		sourceURL          string
+		sourcePathStrip    string
+		expectedSourceType string
+	}{
+		{
+			name:               "GitHub URL",
+			sourceURL:          "https://github.com/owner/repo/releases/download/v1.0.0/file.zip",
+			sourcePathStrip:    "",
+			expectedSourceType: "github",
+		},
+		{
+			name:               "JFrog URL without strip",
+			sourceURL:          "https://artifactory.corp.net/staging/file.zip",
+			sourcePathStrip:    "",
+			expectedSourceType: "generic",
+		},
+		{
+			name:               "JFrog URL with strip revealing GitHub",
+			sourceURL:          "https://artifactory.corp.net/staging/github.com/owner/repo/releases/download/v1.0.0/file.zip",
+			sourcePathStrip:    "artifactory.corp.net/staging/",
+			expectedSourceType: "github",
+		},
+		{
+			name:               "JFrog URL with strip revealing non-GitHub",
+			sourceURL:          "https://artifactory.corp.net/staging/some-other-host.com/file.zip",
+			sourcePathStrip:    "artifactory.corp.net/staging/",
+			expectedSourceType: "generic",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			flags := &cmd.MirrorFlags{
+				Source:          tc.sourceURL,
+				Destination:     "test-repo",
+				SourcePathStrip: tc.sourcePathStrip,
+				JFrogURL:        "https://test.jfrog.io/artifactory",
+				JFrogUser:       "user",
+				JFrogPassword:   "password",
+			}
+
+			config, err := cmd.ValidateAndGetConfig(flags)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedSourceType, config.Source.Type)
+		})
+	}
+}

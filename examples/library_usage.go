@@ -45,6 +45,9 @@ func main() {
 	// Example 6: JFrog-to-JFrog mirroring with source path stripping
 	sourcePathStrippingExample()
 
+	// Example 7: API features - source type detection and validation
+	apiFeatureExample()
+
 	fmt.Println("\n✅ All examples completed!")
 }
 
@@ -379,4 +382,84 @@ func sourcePathStrippingExample() {
 	fmt.Println("   - Clean JFrog-to-JFrog mirroring without nested repository paths")
 	fmt.Println("   - Flexible prefix removal for different repository structures")
 	fmt.Println("   - Maintains proper artifact organization and metadata")
+}
+
+func apiFeatureExample() {
+	fmt.Println("\n=== API Features Example ===")
+
+	client, err := garf.NewClient(garf.Config{
+		JFrogURL:      "https://mycompany.jfrog.io/artifactory",
+		JFrogUser:     "username",
+		JFrogPassword: "password",
+	})
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	// Example 1: Source type detection for GitHub URLs
+	fmt.Println("🔍 Detecting source types...")
+
+	githubURL := "https://github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-7.2.1-windows-x86_64.exe"
+	sourceType := client.DetectSourceType(githubURL, "")
+	fmt.Printf("✓ GitHub URL '%s' detected as: %s\n", githubURL, sourceType)
+
+	// Example 2: Source type detection for generic HTTP URLs
+	genericURL := "https://releases.example.com/artifacts/v1.0.0/tool.tar.gz"
+	sourceType = client.DetectSourceType(genericURL, "")
+	fmt.Printf("✓ Generic URL '%s' detected as: %s\n", genericURL, sourceType)
+
+	// Example 3: Source type detection with path stripping
+	jfrogURL := "https://staging.jfrog.io/artifactory/staging-repo/github.com/owner/repo/releases/download/v1.0.0/artifact.zip"
+	pathStrip := "staging.jfrog.io/artifactory/staging-repo/"
+	sourceType = client.DetectSourceType(jfrogURL, pathStrip)
+	fmt.Printf("✓ JFrog URL with path strip detected as: %s\n", sourceType)
+	fmt.Printf("  Original: %s\n", jfrogURL)
+	fmt.Printf("  Strip: %s\n", pathStrip)
+
+	// Example 4: Ensure source availability
+	fmt.Println("🔍 Checking source availability...")
+	if err := client.EnsureSourceAvailable("github"); err != nil {
+		log.Printf("❌ GitHub source not available: %v", err)
+	} else {
+		fmt.Println("✓ GitHub source is available")
+	}
+
+	if err := client.EnsureSourceAvailable("generic"); err != nil {
+		log.Printf("❌ Generic source not available: %v", err)
+	} else {
+		fmt.Println("✓ Generic source is available")
+	}
+
+	// Example 5: Request validation
+	fmt.Println("🔍 Validating mirror requests...")
+
+	validRequest := garf.MirrorRequest{
+		Source:          "https://github.com/example/repo/releases/download/v1.0/file.zip",
+		Destination:     "test-repo",
+		SourcePathStrip: "valid/path/strip/",
+		Unzip:           true,
+		Properties:      map[string]string{"type": "binary"},
+	}
+
+	if err := client.ValidateRequest(validRequest); err != nil {
+		log.Printf("❌ Request validation failed: %v", err)
+	} else {
+		fmt.Println("✓ Request validation passed")
+	}
+
+	// Example 6: Invalid request validation
+	invalidRequest := garf.MirrorRequest{
+		Source:          "https://github.com/example/repo/releases/download/v1.0/file.zip",
+		Destination:     "",                // Invalid: empty destination
+		SourcePathStrip: "../invalid/path", // Invalid: contains ..
+	}
+
+	if err := client.ValidateRequest(invalidRequest); err != nil {
+		fmt.Printf("✓ Invalid request correctly rejected: %v\n", err)
+	} else {
+		fmt.Println("❌ Invalid request was incorrectly accepted")
+	}
+
+	fmt.Println("📊 Client statistics:")
+	fmt.Printf("  Cached destinations: %d\n", client.GetCachedDestinationsCount())
 }

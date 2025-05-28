@@ -22,11 +22,12 @@ go_test(
     name = "mirror_test",
     size = "small",
     srcs = [
+        "mirror_impl_test.go",
         "mirror_process_test.go",
         "mirror_test.go",
     ],
+    embed = [":mirror"],
     deps = [
-        ":mirror",
         "//pkg/core",
         "//pkg/core/config",
         "//pkg/destinations",
