@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/albertocavalcante/garf/compare/v0.5.1...v0.5.2) (2025-05-28)
+
+
+### Bug Fixes
+
+* source path stripping preserves GitHub structure ([#113](https://github.com/albertocavalcante/garf/issues/113)) ([4cbd5f4](https://github.com/albertocavalcante/garf/commit/4cbd5f4c822fab86c234d774c8c4a7f90b635dc9))
+
 ## [0.5.1](https://github.com/albertocavalcante/garf/compare/v0.5.0...v0.5.1) (2025-05-28)
 
 
