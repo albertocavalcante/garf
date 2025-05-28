@@ -16,6 +16,11 @@ alias(
     actual = "@rules_go//go:go",
 )
 
+alias(
+    name = "garf",
+    actual = "//cmd/garf:garf"
+)
+
 # gazelle:proto disable_global
 gazelle(name = "gazelle")
 
