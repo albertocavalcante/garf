@@ -100,18 +100,18 @@ For mirroring artifacts from one JFrog repository to another (e.g., staging to p
 ```sh
 # Mirror from staging to production, stripping the staging prefix
 bazel run //:garf -- mirror \
-  --source https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe \
+  --source https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe \
   --destination prod-repo \
   --source-path-strip "artifactory.corp.net/staging/"
 ```
 
 This will:
 - Strip `artifactory.corp.net/staging/` from the source URL
-- Process the remaining URL (`github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe`) normally
-- Upload to `prod-repo/github.com/bazelbuild/bazel/v8.2.1/bazel-win.exe`
+- Process the remaining URL (`github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe`) normally
+- Upload to `prod-repo/github.com/bazelbuild/bazel/7.2.1/bazel-win.exe`
 
 Without source path stripping, the result would be:
-`prod-repo/artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe`
+`prod-repo/artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe`
 
 #### Common Use Cases
 

@@ -43,6 +43,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -221,17 +222,21 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 			logger.WithError(err).Error("Failed to create destination")
 			return nil, fmt.Errorf("failed to create destination: %w", err)
 		}
+		c.destinations[destKey] = dest
+	}
+	c.mu.Unlock()
 
-		// Register destination with mirror
+	// Register destination with mirror (outside of lock to minimize lock duration)
+	if !exists {
 		if err := c.mirror.AddDestination(destKey, dest); err != nil {
+			// If registration fails, remove from cache
+			c.mu.Lock()
+			delete(c.destinations, destKey)
 			c.mu.Unlock()
 			logger.WithError(err).Error("Failed to register destination with mirror")
 			return nil, fmt.Errorf("failed to add destination: %w", err)
 		}
-
-		c.destinations[destKey] = dest
 	}
-	c.mu.Unlock()
 
 	// Create artifact
 	artifact := &core.Artifact{
@@ -332,6 +337,19 @@ func (c *Client) ValidateRequest(request MirrorRequest) error {
 		}
 	}
 
+	// Validate SourcePathStrip if specified
+	if request.SourcePathStrip != "" {
+		// Check for invalid characters that could cause issues
+		if strings.Contains(request.SourcePathStrip, "..") {
+			return fmt.Errorf("source path strip cannot contain '..' for security reasons")
+		}
+
+		// Ensure it doesn't start with a scheme (should be a path/host component)
+		if strings.HasPrefix(request.SourcePathStrip, "http://") || strings.HasPrefix(request.SourcePathStrip, "https://") {
+			return fmt.Errorf("source path strip should not include the URL scheme (http:// or https://)")
+		}
+	}
+
 	return nil
 }
 
@@ -374,6 +392,16 @@ func (c *Client) IsCachedDestination(key string) bool {
 
 // createDestination creates a new JFrog destination with the given configuration.
 func (c *Client) createDestination(destPath, sourcePathStrip string) (core.Destination, error) {
+	// Validate sourcePathStrip parameter
+	if sourcePathStrip != "" {
+		if strings.Contains(sourcePathStrip, "..") {
+			return nil, fmt.Errorf("source path strip cannot contain '..' for security reasons")
+		}
+		if strings.HasPrefix(sourcePathStrip, "http://") || strings.HasPrefix(sourcePathStrip, "https://") {
+			return nil, fmt.Errorf("source path strip should not include the URL scheme")
+		}
+	}
+
 	jfrogConfig := destinations.JFrogConfig{
 		URL:             c.Config.JFrogURL,
 		User:            c.Config.JFrogUser,

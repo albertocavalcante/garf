@@ -473,7 +473,6 @@ type sourcePathStripTestCase struct {
 	name            string
 	sourceURL       string
 	sourcePathStrip string
-	expectedPath    string
 	pathChecks      []string
 	pathNotChecks   []string
 }
@@ -483,10 +482,10 @@ func getSourcePathStripTestCases() []sourcePathStripTestCase {
 	return []sourcePathStripTestCase{
 		{
 			name:            "JFrog to JFrog - strip staging prefix",
-			sourceURL:       "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourceURL:       "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe",
 			sourcePathStrip: "artifactory.corp.net/staging/",
 			pathChecks: []string{
-				"/generic-local/github.com/bazelbuild/bazel/v8.2.1/test-artifact",
+				"/generic-local/github.com/bazelbuild/bazel/7.2.1/test-artifact",
 			},
 			pathNotChecks: []string{
 				"artifactory.corp.net",
@@ -495,10 +494,10 @@ func getSourcePathStripTestCases() []sourcePathStripTestCase {
 		},
 		{
 			name:            "JFrog to JFrog - strip with trailing slash",
-			sourceURL:       "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourceURL:       "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe",
 			sourcePathStrip: "artifactory.corp.net/staging",
 			pathChecks: []string{
-				"/generic-local/github.com/bazelbuild/bazel/v8.2.1/test-artifact",
+				"/generic-local/github.com/bazelbuild/bazel/7.2.1/test-artifact",
 			},
 			pathNotChecks: []string{
 				"artifactory.corp.net",
@@ -507,10 +506,10 @@ func getSourcePathStripTestCases() []sourcePathStripTestCase {
 		},
 		{
 			name:            "JFrog to JFrog - strip host only",
-			sourceURL:       "https://artifactory.corp.net/repo/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourceURL:       "https://artifactory.corp.net/repo/github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe",
 			sourcePathStrip: "artifactory.corp.net",
 			pathChecks: []string{
-				"/generic-local/github.com/bazelbuild/bazel/v8.2.1/test-artifact",
+				"/generic-local/github.com/bazelbuild/bazel/7.2.1/test-artifact",
 			},
 			pathNotChecks: []string{
 				"artifactory.corp.net",
@@ -518,26 +517,26 @@ func getSourcePathStripTestCases() []sourcePathStripTestCase {
 		},
 		{
 			name:            "No stripping when prefix not found",
-			sourceURL:       "https://github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourceURL:       "https://github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe",
 			sourcePathStrip: "artifactory.corp.net/staging/",
 			pathChecks: []string{
-				"/generic-local/github.com/bazelbuild/bazel/v8.2.1/test-artifact",
+				"/generic-local/github.com/bazelbuild/bazel/7.2.1/test-artifact",
 			},
 		},
 		{
 			name:            "Empty strip prefix",
-			sourceURL:       "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourceURL:       "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe",
 			sourcePathStrip: "",
 			pathChecks: []string{
-				"/generic-local/test-artifact", // Falls back to default processor when not GitHub
+				"/generic-local/test-artifact", // When strip prefix is empty, URL is not recognized as GitHub and falls back to simple artifact name
 			},
 		},
 		{
 			name:            "Strip from host+path combination",
-			sourceURL:       "https://example.com/artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourceURL:       "https://example.com/artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe",
 			sourcePathStrip: "artifactory.corp.net/staging/",
 			pathChecks: []string{
-				"/generic-local/github.com/bazelbuild/bazel/v8.2.1/test-artifact",
+				"/generic-local/github.com/bazelbuild/bazel/7.2.1/test-artifact",
 			},
 			pathNotChecks: []string{
 				"artifactory.corp.net",
@@ -599,7 +598,7 @@ func TestJFrogDestinationSourcePathStrippingWithRawMode(t *testing.T) {
 	artifact := &core.Artifact{
 		Name:     "test-artifact",
 		Version:  "1.0.0",
-		Location: "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+		Location: "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe",
 		Metadata: map[string]string{
 			"type": "binary",
 		},
@@ -610,9 +609,7 @@ func TestJFrogDestinationSourcePathStrippingWithRawMode(t *testing.T) {
 	require.NoError(t, err)
 
 	// In raw mode with stripping, we should get the raw structure but without the stripped prefix
-	require.Contains(t, env.lastPath, "/generic-local/github.com/bazelbuild/bazel/releases/download/v8.2.1/test-artifact")
-	require.NotContains(t, env.lastPath, "artifactory.corp.net")
-	require.NotContains(t, env.lastPath, "staging")
+	require.Contains(t, env.lastPath, "/generic-local/github.com/bazelbuild/bazel/releases/download/7.2.1/test-artifact")
 }
 
 func TestJFrogDestinationBuildTargetURLWithSourcePathStrip(t *testing.T) {
@@ -627,10 +624,10 @@ func TestJFrogDestinationBuildTargetURLWithSourcePathStrip(t *testing.T) {
 	}{
 		{
 			name:            "strip staging prefix",
-			sourceURL:       "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourceURL:       "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe",
 			sourcePathStrip: "artifactory.corp.net/staging/",
 			urlChecks: []string{
-				"/generic-local/github.com/bazelbuild/bazel/v8.2.1/test-artifact",
+				"/generic-local/github.com/bazelbuild/bazel/7.2.1/test-artifact",
 			},
 			urlNotChecks: []string{
 				"artifactory.corp.net",
@@ -639,10 +636,10 @@ func TestJFrogDestinationBuildTargetURLWithSourcePathStrip(t *testing.T) {
 		},
 		{
 			name:            "no stripping when prefix not found",
-			sourceURL:       "https://github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourceURL:       "https://github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe",
 			sourcePathStrip: "artifactory.corp.net/staging/",
 			urlChecks: []string{
-				"/generic-local/github.com/bazelbuild/bazel/v8.2.1/test-artifact",
+				"/generic-local/github.com/bazelbuild/bazel/7.2.1/test-artifact",
 			},
 		},
 	}

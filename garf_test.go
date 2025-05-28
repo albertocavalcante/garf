@@ -665,3 +665,106 @@ func TestClient_RaceConditionWithDifferentSourcePathStrip(t *testing.T) {
 	require.True(t, client.IsCachedDestination("test-repo|strip:artifactory.corp.net/other/"))
 	require.True(t, client.IsCachedDestination("test-repo"))
 }
+
+func TestClient_ValidateRequest(t *testing.T) {
+	client, err := garf.NewClient(garf.Config{
+		JFrogURL:      "https://test.jfrog.io/artifactory",
+		JFrogUser:     "testuser",
+		JFrogPassword: "testpass",
+	})
+	require.NoError(t, err)
+
+	tests := []struct {
+		name        string
+		request     garf.MirrorRequest
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "valid request",
+			request: garf.MirrorRequest{
+				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+				Destination: "my-repo",
+			},
+			expectError: false,
+		},
+		{
+			name: "missing source",
+			request: garf.MirrorRequest{
+				Destination: "my-repo",
+			},
+			expectError: true,
+			errorMsg:    "source is required",
+		},
+		{
+			name: "missing destination",
+			request: garf.MirrorRequest{
+				Source: "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+			},
+			expectError: true,
+			errorMsg:    "destination is required",
+		},
+		{
+			name: "invalid dry run mode",
+			request: garf.MirrorRequest{
+				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+				Destination: "my-repo",
+				DryRunMode:  "invalid",
+			},
+			expectError: true,
+			errorMsg:    "invalid dry run mode",
+		},
+		{
+			name: "valid source path strip",
+			request: garf.MirrorRequest{
+				Source:          "https://artifactory.corp.net/staging/github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+				Destination:     "my-repo",
+				SourcePathStrip: "artifactory.corp.net/staging/",
+			},
+			expectError: false,
+		},
+		{
+			name: "source path strip with path traversal",
+			request: garf.MirrorRequest{
+				Source:          "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+				Destination:     "my-repo",
+				SourcePathStrip: "../../malicious/path",
+			},
+			expectError: true,
+			errorMsg:    "source path strip cannot contain '..' for security reasons",
+		},
+		{
+			name: "source path strip with http scheme",
+			request: garf.MirrorRequest{
+				Source:          "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+				Destination:     "my-repo",
+				SourcePathStrip: "http://artifactory.corp.net/staging/",
+			},
+			expectError: true,
+			errorMsg:    "source path strip should not include the URL scheme",
+		},
+		{
+			name: "source path strip with https scheme",
+			request: garf.MirrorRequest{
+				Source:          "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+				Destination:     "my-repo",
+				SourcePathStrip: "https://artifactory.corp.net/staging/",
+			},
+			expectError: true,
+			errorMsg:    "source path strip should not include the URL scheme",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := client.ValidateRequest(tt.request)
+
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

@@ -321,9 +321,9 @@ func sourcePathStrippingExample() {
 	fmt.Println("\n=== Source Path Stripping Example ===")
 
 	client, err := garf.NewClient(garf.Config{
-		JFrogURL:      "https://mycompany.jfrog.io/artifactory",
-		JFrogUser:     "username",
-		JFrogPassword: "password",
+		JFrogURL:      os.Getenv("JFROG_URL"),
+		JFrogUser:     os.Getenv("JFROG_USER"),
+		JFrogPassword: os.Getenv("JFROG_PASSWORD"),
 	})
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)

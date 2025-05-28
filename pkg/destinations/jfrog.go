@@ -211,81 +211,31 @@ func (d *JFrogDestination) stripSourcePath(sourceURL *url.URL) (*url.URL, error)
 	var found bool
 
 	// Try to strip from the full URL first (handles cases with scheme)
-	if strings.Contains(fullURL, stripPrefix) {
+	if strings.HasPrefix(fullURL, stripPrefix) || strings.Contains(fullURL, stripPrefix) {
 		// Find the position after the strip prefix
 		if idx := strings.Index(fullURL, stripPrefix); idx != -1 {
 			afterPrefix := fullURL[idx+len(stripPrefix):]
 			// Remove leading slash if present
 			afterPrefix = strings.TrimPrefix(afterPrefix, "/")
 
-			// If the stripped content looks like a URL path starting with a domain,
-			// try to reconstruct it as a proper URL
-			if strings.Contains(afterPrefix, "/") && strings.Contains(strings.Split(afterPrefix, "/")[0], ".") {
-				// This looks like domain.com/path, reconstruct as https://domain.com/path
-				reconstructedURL, err := url.Parse("https://" + afterPrefix)
-				if err == nil {
-					logger.WithFields(logrus.Fields{
-						"original_url":      sourceURL.String(),
-						"reconstructed_url": reconstructedURL.String(),
-					}).Debug("Reconstructed URL from stripped content")
-					return reconstructedURL, nil
-				}
-			}
-
-			// Check if the stripped content contains github.com in the path
-			if strings.Contains(afterPrefix, "github.com/") {
-				// Find github.com and reconstruct from there
-				if idx := strings.Index(afterPrefix, "github.com/"); idx != -1 {
-					githubPath := afterPrefix[idx:]
-					reconstructedURL, err := url.Parse("https://" + githubPath)
-					if err == nil {
-						logger.WithFields(logrus.Fields{
-							"original_url":      sourceURL.String(),
-							"reconstructed_url": reconstructedURL.String(),
-						}).Debug("Reconstructed GitHub URL from stripped content")
-						return reconstructedURL, nil
-					}
-				}
+			// Try to reconstruct URL if possible
+			if reconstructedURL := d.tryReconstructURL(afterPrefix, logger, "stripped content"); reconstructedURL != nil {
+				return reconstructedURL, nil
 			}
 
 			strippedPath = "/" + afterPrefix
 			found = true
 		}
-	} else if strings.Contains(hostPath, stripPrefix) {
+	} else if strings.HasPrefix(hostPath, stripPrefix) || strings.Contains(hostPath, stripPrefix) {
 		// Try stripping from host+path combination
 		if idx := strings.Index(hostPath, stripPrefix); idx != -1 {
 			afterPrefix := hostPath[idx+len(stripPrefix):]
 			// Remove leading slash if present
 			afterPrefix = strings.TrimPrefix(afterPrefix, "/")
 
-			// If the stripped content looks like a URL path starting with a domain,
-			// try to reconstruct it as a proper URL
-			if strings.Contains(afterPrefix, "/") && strings.Contains(strings.Split(afterPrefix, "/")[0], ".") {
-				// This looks like domain.com/path, reconstruct as https://domain.com/path
-				reconstructedURL, err := url.Parse("https://" + afterPrefix)
-				if err == nil {
-					logger.WithFields(logrus.Fields{
-						"original_url":      sourceURL.String(),
-						"reconstructed_url": reconstructedURL.String(),
-					}).Debug("Reconstructed URL from stripped host+path")
-					return reconstructedURL, nil
-				}
-			}
-
-			// Check if the stripped content contains github.com in the path
-			if strings.Contains(afterPrefix, "github.com/") {
-				// Find github.com and reconstruct from there
-				if idx := strings.Index(afterPrefix, "github.com/"); idx != -1 {
-					githubPath := afterPrefix[idx:]
-					reconstructedURL, err := url.Parse("https://" + githubPath)
-					if err == nil {
-						logger.WithFields(logrus.Fields{
-							"original_url":      sourceURL.String(),
-							"reconstructed_url": reconstructedURL.String(),
-						}).Debug("Reconstructed GitHub URL from stripped host+path")
-						return reconstructedURL, nil
-					}
-				}
+			// Try to reconstruct URL if possible
+			if reconstructedURL := d.tryReconstructURL(afterPrefix, logger, "stripped host+path"); reconstructedURL != nil {
+				return reconstructedURL, nil
 			}
 
 			strippedPath = "/" + afterPrefix
@@ -308,6 +258,43 @@ func (d *JFrogDestination) stripSourcePath(sourceURL *url.URL) (*url.URL, error)
 	}).Debug("Successfully stripped source path prefix")
 
 	return &processedURL, nil
+}
+
+// tryReconstructURL attempts to reconstruct a URL from the stripped content.
+// It handles common patterns like domain.com/path and github.com/path.
+// Returns nil if reconstruction is not possible or fails.
+func (d *JFrogDestination) tryReconstructURL(afterPrefix string, logger *logrus.Entry, context string) *url.URL {
+	// If the stripped content looks like a URL path starting with a domain,
+	// try to reconstruct it as a proper URL
+	if strings.Contains(afterPrefix, "/") && strings.Contains(strings.Split(afterPrefix, "/")[0], ".") {
+		// This looks like domain.com/path, reconstruct as https://domain.com/path
+		reconstructedURL, err := url.Parse("https://" + afterPrefix)
+		if err == nil {
+			logger.WithFields(logrus.Fields{
+				"reconstructed_url": reconstructedURL.String(),
+				"context":           context,
+			}).Debug("Reconstructed URL from domain pattern")
+			return reconstructedURL
+		}
+	}
+
+	// Check if the stripped content contains github.com in the path
+	if strings.Contains(afterPrefix, "github.com/") {
+		// Find github.com and reconstruct from there
+		if idx := strings.Index(afterPrefix, "github.com/"); idx != -1 {
+			githubPath := afterPrefix[idx:]
+			reconstructedURL, err := url.Parse("https://" + githubPath)
+			if err == nil {
+				logger.WithFields(logrus.Fields{
+					"reconstructed_url": reconstructedURL.String(),
+					"context":           context,
+				}).Debug("Reconstructed GitHub URL")
+				return reconstructedURL
+			}
+		}
+	}
+
+	return nil
 }
 
 // Put uploads an artifact to JFrog Artifactory.
