@@ -93,6 +93,43 @@ bazel run //:garf -- mirror \
 
 This will extract the file (e.g., `bazel_nojdk-7.6.0-windows-x86_64.exe`) from the zip and upload it directly.
 
+### JFrog-to-JFrog Mirroring with Source Path Stripping
+
+For mirroring artifacts from one JFrog repository to another (e.g., staging to production), you can strip source path prefixes to avoid nested repository structures:
+
+```sh
+# Mirror from staging to production, stripping the staging prefix
+bazel run //:garf -- mirror \
+  --source https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe \
+  --destination prod-repo \
+  --source-path-strip "artifactory.corp.net/staging/"
+```
+
+This will:
+- Strip `artifactory.corp.net/staging/` from the source URL
+- Process the remaining URL (`github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe`) normally
+- Upload to `prod-repo/github.com/bazelbuild/bazel/7.2.1/bazel-win.exe`
+
+Without source path stripping, the result would be:
+`prod-repo/artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe`
+
+#### Common Use Cases
+
+**Strip staging repository prefix:**
+```sh
+--source-path-strip "artifactory.corp.net/staging/"
+```
+
+**Strip entire host:**
+```sh
+--source-path-strip "artifactory.corp.net"
+```
+
+**Strip custom path prefix:**
+```sh
+--source-path-strip "my-company.jfrog.io/temp-repo/"
+```
+
 ### Dry Run Mode
 
 The mirror command supports dry run modes to help with testing and validation without making actual changes to Artifactory. There are two dry run modes available:
@@ -144,11 +181,12 @@ garf mirror [OPTIONS]
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--source` | `-s` | URL of the artifact to mirror (required) |
 | `--destination` | `-d` | JFrog repository destination (required) |
 | `--from-file` | `-f` | Local file path to upload (URL still used for coordinates) |
-| `--raw` | | Use the full URL path structure rather than parsed coordinates |
 | `--properties` | | Add properties to the artifact (can be used multiple times) |
+| `--raw` | | Use the full URL path structure rather than parsed coordinates |
+| `--source` | `-s` | URL of the artifact to mirror (required) |
+| `--source-path-strip` | | Strip source path prefixes for JFrog-to-JFrog mirroring |
 | `--unzip` | | Extract and upload the content from zip files with a single file |
 | `--dry-run` | | Perform a dry run without making actual changes |
 | `--dry-run-mode` | | Dry run mode: 'all' (skip all operations), 'upload' (skip only upload to Artifactory) |

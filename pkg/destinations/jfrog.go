@@ -22,6 +22,12 @@ type JFrogConfig struct {
 	User     string // Username for authentication
 	Password string // Password for authentication
 	DestPath string // Path within Artifactory where artifacts will be stored
+
+	// SourcePathStrip is an optional prefix to strip from source URLs before processing.
+	// This is useful for JFrog-to-JFrog mirroring where you want to remove the source
+	// repository path. For example, setting this to "artifactory.corp.net/staging/"
+	// will strip that prefix from source URLs before generating the destination path.
+	SourcePathStrip string
 }
 
 // JFrogDestination implements the core.Destination interface for JFrog Artifactory.
@@ -122,6 +128,7 @@ func (d *JFrogDestination) buildArtifactPath(artifact *core.Artifact, targetURL 
 		"artifact_location": artifact.Location,
 		"artifact_name":     artifact.Name,
 		"raw_mode":          raw,
+		"source_path_strip": d.config.SourcePathStrip,
 	})
 
 	if artifact.Location == "" {
@@ -140,8 +147,22 @@ func (d *JFrogDestination) buildArtifactPath(artifact *core.Artifact, targetURL 
 
 	logger.WithField("parsed_source_url", sourceURL.String()).Debug("Parsed source URL")
 
+	// Apply source path stripping if configured
+	processedURL := sourceURL
+	if d.config.SourcePathStrip != "" {
+		processedURL, err = d.stripSourcePath(sourceURL)
+		if err != nil {
+			logger.WithError(err).Error("Failed to strip source path")
+			return "", err
+		}
+		logger.WithFields(logrus.Fields{
+			"original_url":  sourceURL.String(),
+			"processed_url": processedURL.String(),
+		}).Debug("Applied source path stripping")
+	}
+
 	// Get the structured path from our path builder
-	structuredPath := d.pathBuilder.ProcessURL(sourceURL, raw)
+	structuredPath := d.pathBuilder.ProcessURL(processedURL, raw)
 	logger.WithField("structured_path", structuredPath).Debug("Generated structured path from URL processor")
 
 	// Replace the filename in the structured path with the artifact name
@@ -162,6 +183,118 @@ func (d *JFrogDestination) buildArtifactPath(artifact *core.Artifact, targetURL 
 	logger.WithField("final_artifact_path", artifactPath).Debug("Built final artifact path")
 
 	return artifactPath, nil
+}
+
+// stripSourcePath removes the configured source path prefix from the URL.
+// This is useful for JFrog-to-JFrog mirroring where you want to remove the source
+// repository path before processing the URL structure.
+func (d *JFrogDestination) stripSourcePath(sourceURL *url.URL) (*url.URL, error) {
+	stripPrefix := strings.TrimSuffix(d.config.SourcePathStrip, "/")
+	if stripPrefix == "" {
+		return sourceURL, nil
+	}
+
+	logger := d.logger.WithFields(logrus.Fields{
+		"source_url":   sourceURL.String(),
+		"strip_prefix": stripPrefix,
+	})
+
+	// Create a copy of the URL to avoid modifying the original
+	processedURL := *sourceURL
+
+	// Check if the URL contains the prefix to strip
+	// We'll check both the full URL string and just the host+path combination
+	fullURL := sourceURL.String()
+	hostPath := sourceURL.Host + sourceURL.Path
+
+	var strippedPath string
+	var found bool
+
+	// Try to strip from the full URL first (handles cases with scheme)
+	if strings.HasPrefix(fullURL, stripPrefix) || strings.Contains(fullURL, stripPrefix) {
+		// Find the position after the strip prefix
+		if idx := strings.Index(fullURL, stripPrefix); idx != -1 {
+			afterPrefix := fullURL[idx+len(stripPrefix):]
+			// Remove leading slash if present
+			afterPrefix = strings.TrimPrefix(afterPrefix, "/")
+
+			// Try to reconstruct URL if possible
+			if reconstructedURL := d.tryReconstructURL(afterPrefix, logger, "stripped content"); reconstructedURL != nil {
+				return reconstructedURL, nil
+			}
+
+			strippedPath = "/" + afterPrefix
+			found = true
+		}
+	} else if strings.HasPrefix(hostPath, stripPrefix) || strings.Contains(hostPath, stripPrefix) {
+		// Try stripping from host+path combination
+		if idx := strings.Index(hostPath, stripPrefix); idx != -1 {
+			afterPrefix := hostPath[idx+len(stripPrefix):]
+			// Remove leading slash if present
+			afterPrefix = strings.TrimPrefix(afterPrefix, "/")
+
+			// Try to reconstruct URL if possible
+			if reconstructedURL := d.tryReconstructURL(afterPrefix, logger, "stripped host+path"); reconstructedURL != nil {
+				return reconstructedURL, nil
+			}
+
+			strippedPath = "/" + afterPrefix
+			found = true
+		}
+	}
+
+	if !found {
+		logger.Debug("Strip prefix not found in URL, returning original URL")
+		return sourceURL, nil
+	}
+
+	// Update the processed URL path
+	processedURL.Path = strippedPath
+
+	logger.WithFields(logrus.Fields{
+		"original_path":  sourceURL.Path,
+		"processed_path": processedURL.Path,
+		"processed_url":  processedURL.String(),
+	}).Debug("Successfully stripped source path prefix")
+
+	return &processedURL, nil
+}
+
+// tryReconstructURL attempts to reconstruct a URL from the stripped content.
+// It handles common patterns like domain.com/path and github.com/path.
+// Returns nil if reconstruction is not possible or fails.
+func (d *JFrogDestination) tryReconstructURL(afterPrefix string, logger *logrus.Entry, context string) *url.URL {
+	// If the stripped content looks like a URL path starting with a domain,
+	// try to reconstruct it as a proper URL
+	if strings.Contains(afterPrefix, "/") && strings.Contains(strings.Split(afterPrefix, "/")[0], ".") {
+		// This looks like domain.com/path, reconstruct as https://domain.com/path
+		reconstructedURL, err := url.Parse("https://" + afterPrefix)
+		if err == nil {
+			logger.WithFields(logrus.Fields{
+				"reconstructed_url": reconstructedURL.String(),
+				"context":           context,
+			}).Debug("Reconstructed URL from domain pattern")
+			return reconstructedURL
+		}
+	}
+
+	// Check if the stripped content contains github.com in the path
+	if strings.Contains(afterPrefix, "github.com/") {
+		// Find github.com and reconstruct from there
+		if idx := strings.Index(afterPrefix, "github.com/"); idx != -1 {
+			githubPath := afterPrefix[idx:]
+			reconstructedURL, err := url.Parse("https://" + githubPath)
+			if err == nil {
+				logger.WithFields(logrus.Fields{
+					"reconstructed_url": reconstructedURL.String(),
+					"context":           context,
+				}).Debug("Reconstructed GitHub URL")
+				return reconstructedURL
+			}
+		}
+	}
+
+	return nil
 }
 
 // Put uploads an artifact to JFrog Artifactory.

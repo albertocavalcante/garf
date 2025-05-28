@@ -42,6 +42,9 @@ func main() {
 	// Example 5: Error handling and dry run
 	errorHandlingExample()
 
+	// Example 6: JFrog-to-JFrog mirroring with source path stripping
+	sourcePathStrippingExample()
+
 	fmt.Println("\n✅ All examples completed!")
 }
 
@@ -312,4 +315,68 @@ func errorHandlingExample() {
 	default:
 		fmt.Printf("✅ Successfully mirrored to %s\n", result.DestinationPath)
 	}
+}
+
+func sourcePathStrippingExample() {
+	fmt.Println("\n=== Source Path Stripping Example ===")
+
+	client, err := garf.NewClient(garf.Config{
+		JFrogURL:      os.Getenv("JFROG_URL"),
+		JFrogUser:     os.Getenv("JFROG_USER"),
+		JFrogPassword: os.Getenv("JFROG_PASSWORD"),
+	})
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	ctx := context.Background()
+
+	// Example 1: Mirror from staging to production with prefix stripping
+	fmt.Println("📦 JFrog-to-JFrog mirroring with staging prefix strip")
+	result1, err := client.Mirror(ctx, garf.MirrorRequest{
+		Source:          "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+		Destination:     "prod-repo",
+		SourcePathStrip: "artifactory.corp.net/staging/",
+		Properties:      map[string]string{"type": "binary", "platform": "windows"},
+		DryRun:          true, // Use dry run for demonstration
+		DryRunMode:      "all",
+	})
+	if err != nil {
+		log.Printf("Mirror failed: %v", err)
+		return
+	}
+
+	if result1.Error != nil {
+		log.Printf("Mirror operation failed: %v", result1.Error)
+		return
+	}
+
+	fmt.Printf("✓ Mirrored: %s -> %s\n", result1.Source, result1.DestinationPath)
+
+	// Example 2: Mirror with host-only stripping
+	fmt.Println("📦 JFrog-to-JFrog mirroring with host strip")
+	result2, err := client.Mirror(ctx, garf.MirrorRequest{
+		Source:          "https://artifactory.corp.net/repo/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+		Destination:     "prod-repo",
+		SourcePathStrip: "artifactory.corp.net",
+		Properties:      map[string]string{"type": "binary", "platform": "windows"},
+		DryRun:          true, // Use dry run for demonstration
+		DryRunMode:      "all",
+	})
+	if err != nil {
+		log.Printf("Mirror failed: %v", err)
+		return
+	}
+
+	if result2.Error != nil {
+		log.Printf("Mirror operation failed: %v", result2.Error)
+		return
+	}
+
+	fmt.Printf("✓ Mirrored: %s -> %s\n", result2.Source, result2.DestinationPath)
+
+	fmt.Println("💡 Key benefits of source path stripping:")
+	fmt.Println("   - Clean JFrog-to-JFrog mirroring without nested repository paths")
+	fmt.Println("   - Flexible prefix removal for different repository structures")
+	fmt.Println("   - Maintains proper artifact organization and metadata")
 }
