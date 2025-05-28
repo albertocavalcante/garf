@@ -46,6 +46,10 @@ func createGitHubRequest(ctx context.Context, location string) (*http.Request, e
 
 // Get retrieves an artifact from GitHub.
 func (s *GitHubSource) Get(ctx context.Context, artifact *core.Artifact) (io.ReadCloser, error) {
+	if artifact == nil {
+		return nil, fmt.Errorf("artifact cannot be nil")
+	}
+
 	logger := s.GetLogger().WithFields(logrus.Fields{
 		"source":        "github",
 		"url":           artifact.Location,
@@ -95,16 +99,4 @@ func (s *GitHubSource) Get(ctx context.Context, artifact *core.Artifact) (io.Rea
 // Validate checks if the source is properly configured.
 func (s *GitHubSource) Validate() error {
 	return nil
-}
-
-// cleanupReadCloser wraps an io.ReadCloser and performs cleanup when closed.
-type cleanupReadCloser struct {
-	io.ReadCloser
-	cleanup func()
-}
-
-func (c *cleanupReadCloser) Close() error {
-	err := c.ReadCloser.Close()
-	c.cleanup()
-	return err
 }

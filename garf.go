@@ -167,12 +167,12 @@ func NewClient(config Config) (*Client, error) {
 
 	// Setup both GitHub and generic sources
 	githubSource := sources.NewGitHubSource(config.Logger)
-	if err := mirrorInstance.AddSource("github", githubSource); err != nil {
+	if err := mirrorInstance.AddSource(core.SourceTypeGitHub, githubSource); err != nil {
 		return nil, fmt.Errorf("failed to add GitHub source: %w", err)
 	}
 
 	genericSource := sources.NewGenericSource(config.Logger)
-	if err := mirrorInstance.AddSource("generic", genericSource); err != nil {
+	if err := mirrorInstance.AddSource(core.SourceTypeGeneric, genericSource); err != nil {
 		return nil, fmt.Errorf("failed to add generic source: %w", err)
 	}
 
@@ -446,11 +446,11 @@ func (c *Client) DetectSourceType(sourceURL, sourcePathStrip string) string {
 
 	// Check if it's a GitHub URL
 	if isGitHub, _ := core.IsGitHubURL(urlToCheck); isGitHub {
-		return "github"
+		return core.SourceTypeGitHub
 	}
 
 	// For non-GitHub URLs, use generic source type
-	return "generic"
+	return core.SourceTypeGeneric
 }
 
 // EnsureSourceAvailable ensures that the appropriate source is available in the mirror.

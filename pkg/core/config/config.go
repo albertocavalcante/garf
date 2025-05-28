@@ -85,7 +85,7 @@ func (c *Config) validateSource() error {
 		return fmt.Errorf("source type cannot be empty")
 	}
 
-	if c.Source.Type != "github" && c.Source.Type != "generic" {
+	if c.Source.Type != core.SourceTypeGitHub && c.Source.Type != core.SourceTypeGeneric {
 		return fmt.Errorf("invalid source type: %s", c.Source.Type)
 	}
 

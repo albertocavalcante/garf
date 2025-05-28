@@ -30,6 +30,10 @@ func (s *GenericSource) List(ctx context.Context) ([]*core.Artifact, error) {
 
 // Get retrieves an artifact from any HTTP/HTTPS URL.
 func (s *GenericSource) Get(ctx context.Context, artifact *core.Artifact) (io.ReadCloser, error) {
+	if artifact == nil {
+		return nil, fmt.Errorf("artifact cannot be nil")
+	}
+
 	logger := s.GetLogger().WithFields(logrus.Fields{
 		"source":        "generic",
 		"url":           artifact.Location,

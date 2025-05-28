@@ -330,11 +330,11 @@ func detectSourceType(sourceURL, sourcePathStrip string) string {
 
 	// Check if it's a GitHub URL
 	if isGitHub, _ := core.IsGitHubURL(urlToCheck); isGitHub {
-		return "github"
+		return core.SourceTypeGitHub
 	}
 
-	// For non-GitHub URLs, use generic source type (equivalent to --raw mode)
-	return "generic"
+	// For non-GitHub URLs, use generic source type
+	return core.SourceTypeGeneric
 }
 
 // buildConfigFromFlags creates configuration from flags and environment variables.
