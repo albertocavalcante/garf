@@ -32,7 +32,7 @@ func TestGitHubProcessor(t *testing.T) {
 			name:     "Non-release GitHub URL",
 			urlStr:   "https://github.com/bazelbuild/bazel/blob/master/README.md",
 			raw:      false,
-			expected: "README.md",
+			expected: "github.com/bazelbuild/bazel/README.md",
 		},
 	}
 
