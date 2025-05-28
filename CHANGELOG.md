@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0](https://github.com/albertocavalcante/garf/compare/v0.3.4...v0.4.0) (2025-05-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* fix race condition and add support for strip prefix ([#104](https://github.com/albertocavalcante/garf/issues/104))
+
+### Features
+
+* fix race condition and add support for strip prefix ([#104](https://github.com/albertocavalcante/garf/issues/104)) ([9655fd3](https://github.com/albertocavalcante/garf/commit/9655fd38aa01a16d7252098c7535a1b787cb9444))
+
 ## [0.3.4](https://github.com/albertocavalcante/garf/compare/v0.3.3...v0.3.4) (2025-05-27)
 
 
