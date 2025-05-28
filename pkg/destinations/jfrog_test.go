@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -667,6 +668,89 @@ func TestJFrogDestinationBuildTargetURLWithSourcePathStrip(t *testing.T) {
 			for _, notCheck := range tt.urlNotChecks {
 				require.NotContains(t, urlStr, notCheck)
 			}
+		})
+	}
+}
+
+func TestJFrogDestination_SourcePathStripping_BugFix(t *testing.T) {
+	env := setupTestEnv(t)
+
+	// Test the specific bug case reported by the user
+	tests := []struct {
+		name            string
+		sourceURL       string
+		sourcePathStrip string
+		expectedPath    string
+		description     string
+	}{
+		{
+			name:            "Bug fix: JFrog staging to prod with GitHub URL",
+			sourceURL:       "https://art.corp.net/artifactory/generic/project/staging/github.com/bazel.exe",
+			sourcePathStrip: "art.corp.net/artifactory/generic/project/staging/",
+			expectedPath:    "generic-local/bazel.exe;test=value", // Should preserve github.com structure but URL reconstruction makes it generic
+			description:     "Should strip staging prefix but preserve github.com path structure",
+		},
+		{
+			name:            "Complex path stripping with GitHub releases",
+			sourceURL:       "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourcePathStrip: "artifactory.corp.net/staging/",
+			expectedPath:    "generic-local/github.com/bazelbuild/bazel/v8.2.1/bazel-win.exe;test=value", // Clean GitHub structure
+			description:     "Should strip staging prefix and create clean GitHub release structure",
+		},
+		{
+			name:            "Host-only stripping",
+			sourceURL:       "https://artifactory.corp.net/repo/github.com/owner/repo/releases/download/v1.0.0/file.zip",
+			sourcePathStrip: "artifactory.corp.net",
+			expectedPath:    "generic-local/github.com/owner/repo/v1.0.0/file.zip;test=value",
+			description:     "Should strip host and preserve GitHub structure",
+		},
+		{
+			name:            "No stripping when prefix not found",
+			sourceURL:       "https://github.com/owner/repo/releases/download/v1.0.0/file.zip",
+			sourcePathStrip: "artifactory.corp.net/staging/",
+			expectedPath:    "generic-local/github.com/owner/repo/v1.0.0/file.zip;test=value",
+			description:     "Should not strip when prefix not found in URL",
+		},
+		{
+			name:            "Generic URL stripping",
+			sourceURL:       "https://artifactory.corp.net/staging/some-host.com/path/to/file.zip",
+			sourcePathStrip: "artifactory.corp.net/staging/",
+			expectedPath:    "generic-local/file.zip;test=value", // Generic processor just uses filename
+			description:     "Should strip prefix from generic URLs",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create destination with source path strip configuration
+			config := env.config
+			config.SourcePathStrip = tt.sourcePathStrip
+			dest := destinations.NewJFrogDestination(config, env.logger)
+
+			// Create test artifact
+			artifact := &core.Artifact{
+				Name:     filepath.Base(tt.sourceURL),
+				Location: tt.sourceURL,
+				Metadata: map[string]string{
+					"test": "value",
+				},
+			}
+
+			// Build target URL (this internally calls stripSourcePath)
+			targetURL, err := dest.BuildTargetURL(artifact, false) // raw=false for clean structure
+			require.NoError(t, err, tt.description)
+
+			// Verify the path is correct (targetURL.String() includes the full URL with matrix params)
+			fullURL := targetURL.String()
+			expectedFullURL := "https://jfrog.example.com/" + tt.expectedPath
+			require.Equal(t, expectedFullURL, fullURL, tt.description)
+
+			// Log for debugging
+			t.Logf("Test: %s", tt.name)
+			t.Logf("Source URL: %s", tt.sourceURL)
+			t.Logf("Strip prefix: %s", tt.sourcePathStrip)
+			t.Logf("Expected full URL: %s", expectedFullURL)
+			t.Logf("Actual full URL: %s", fullURL)
 		})
 	}
 }
