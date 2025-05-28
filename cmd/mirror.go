@@ -309,6 +309,34 @@ func loadConfigFromFile(configFile string) (*config.Config, error) {
 	return cfg, nil
 }
 
+// detectSourceType determines the source type based on the URL.
+// When SourcePathStrip is provided, it strips the prefix first to determine the actual source.
+func detectSourceType(sourceURL, sourcePathStrip string) string {
+	// If source path strip is provided, apply it first to get the actual source URL
+	urlToCheck := sourceURL
+	if sourcePathStrip != "" {
+		// Strip the prefix if it exists in the URL
+		if strings.Contains(sourceURL, sourcePathStrip) {
+			// Find the position after the strip prefix
+			if idx := strings.Index(sourceURL, sourcePathStrip); idx != -1 {
+				urlToCheck = sourceURL[idx+len(sourcePathStrip):]
+				// Ensure it starts with a scheme
+				if !strings.HasPrefix(urlToCheck, "http://") && !strings.HasPrefix(urlToCheck, "https://") {
+					urlToCheck = "https://" + urlToCheck
+				}
+			}
+		}
+	}
+
+	// Check if it's a GitHub URL
+	if isGitHub, _ := core.IsGitHubURL(urlToCheck); isGitHub {
+		return "github"
+	}
+
+	// For non-GitHub URLs, use generic source type (equivalent to --raw mode)
+	return "generic"
+}
+
 // buildConfigFromFlags creates configuration from flags and environment variables.
 func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
 	// Setup viper for environment variables
@@ -330,7 +358,7 @@ func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
 	// Create config
 	cfg := &config.Config{
 		Source: config.SourceConfig{
-			Type: "github",
+			Type: detectSourceType(flags.Source, flags.SourcePathStrip),
 			URL:  flags.Source,
 		},
 		Destination: config.DestinationConfig{
