@@ -43,7 +43,6 @@ import (
 	"fmt"
 	"net/url"
 	"path"
-	"strings"
 	"sync"
 	"time"
 
@@ -342,24 +341,13 @@ func (c *Client) ValidateRequest(request MirrorRequest) error {
 	}
 
 	// Validate DryRunMode if specified, regardless of DryRun flag
-	if request.DryRunMode != "" {
-		validModes := map[string]bool{"all": true, "upload": true}
-		if !validModes[request.DryRunMode] {
-			return fmt.Errorf("invalid dry run mode: %s. Valid modes are: all, upload", request.DryRunMode)
-		}
+	if err := core.ValidateDryRunMode(request.DryRunMode); err != nil {
+		return err
 	}
 
 	// Validate SourcePathStrip if specified
-	if request.SourcePathStrip != "" {
-		// Check for invalid characters that could cause issues
-		if strings.Contains(request.SourcePathStrip, "..") {
-			return fmt.Errorf("source path strip cannot contain '..' for security reasons")
-		}
-
-		// Ensure it doesn't start with a scheme (should be a path/host component)
-		if strings.HasPrefix(request.SourcePathStrip, "http://") || strings.HasPrefix(request.SourcePathStrip, "https://") {
-			return fmt.Errorf("source path strip should not include the URL scheme (http:// or https://)")
-		}
+	if err := core.ValidateSourcePathStrip(request.SourcePathStrip); err != nil {
+		return err
 	}
 
 	return nil
@@ -404,14 +392,9 @@ func (c *Client) IsCachedDestination(key string) bool {
 
 // createDestination creates a new JFrog destination with the given configuration.
 func (c *Client) createDestination(destPath, sourcePathStrip string) (core.Destination, error) {
-	// Validate sourcePathStrip parameter
-	if sourcePathStrip != "" {
-		if strings.Contains(sourcePathStrip, "..") {
-			return nil, fmt.Errorf("source path strip cannot contain '..' for security reasons")
-		}
-		if strings.HasPrefix(sourcePathStrip, "http://") || strings.HasPrefix(sourcePathStrip, "https://") {
-			return nil, fmt.Errorf("source path strip should not include the URL scheme")
-		}
+	// Validate sourcePathStrip parameter using centralized validation
+	if err := core.ValidateSourcePathStrip(sourcePathStrip); err != nil {
+		return nil, err
 	}
 
 	jfrogConfig := destinations.JFrogConfig{
@@ -428,29 +411,7 @@ func (c *Client) createDestination(destPath, sourcePathStrip string) (core.Desti
 // DetectSourceType determines the source type based on the URL.
 // When SourcePathStrip is provided, it strips the prefix first to determine the actual source.
 func (c *Client) DetectSourceType(sourceURL, sourcePathStrip string) string {
-	// If source path strip is provided, apply it first to get the actual source URL
-	urlToCheck := sourceURL
-	if sourcePathStrip != "" {
-		// Strip the prefix if it exists in the URL
-		if strings.Contains(sourceURL, sourcePathStrip) {
-			// Find the position after the strip prefix
-			if idx := strings.Index(sourceURL, sourcePathStrip); idx != -1 {
-				urlToCheck = sourceURL[idx+len(sourcePathStrip):]
-				// Ensure it starts with a scheme
-				if !strings.HasPrefix(urlToCheck, "http://") && !strings.HasPrefix(urlToCheck, "https://") {
-					urlToCheck = "https://" + urlToCheck
-				}
-			}
-		}
-	}
-
-	// Check if it's a GitHub URL
-	if isGitHub, _ := core.IsGitHubURL(urlToCheck); isGitHub {
-		return core.SourceTypeGitHub
-	}
-
-	// For non-GitHub URLs, use generic source type
-	return core.SourceTypeGeneric
+	return core.DetectSourceType(sourceURL, sourcePathStrip)
 }
 
 // EnsureSourceAvailable ensures that the appropriate source is available in the mirror.

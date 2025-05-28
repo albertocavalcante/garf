@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"strings"
 
 	"github.com/albertocavalcante/garf/pkg/core"
 	yaml "gopkg.in/yaml.v3"
@@ -126,25 +125,9 @@ func (c *Config) validateDestination() error {
 		return fmt.Errorf("destination password cannot be empty")
 	}
 
-	// Validate SourcePathStrip if specified
-	if c.Destination.SourcePathStrip != "" {
-		// Trim whitespace to handle edge cases
-		c.Destination.SourcePathStrip = strings.TrimSpace(c.Destination.SourcePathStrip)
-
-		// Check for invalid characters that could cause issues
-		if strings.Contains(c.Destination.SourcePathStrip, "..") {
-			return fmt.Errorf("source path strip cannot contain '..' for security reasons")
-		}
-
-		// Ensure it doesn't start with a scheme (should be a path/host component)
-		if strings.HasPrefix(c.Destination.SourcePathStrip, "http://") || strings.HasPrefix(c.Destination.SourcePathStrip, "https://") {
-			return fmt.Errorf("source path strip should not include the URL scheme (http:// or https://)")
-		}
-
-		// Validate against other potentially dangerous patterns
-		if strings.Contains(c.Destination.SourcePathStrip, "\\") {
-			return fmt.Errorf("source path strip should not contain backslashes")
-		}
+	// Validate SourcePathStrip if specified using centralized validation
+	if err := core.ValidateSourcePathStrip(c.Destination.SourcePathStrip); err != nil {
+		return err
 	}
 
 	return nil
