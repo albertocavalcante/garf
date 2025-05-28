@@ -165,10 +165,15 @@ func NewClient(config Config) (*Client, error) {
 	// Create mirror instance
 	mirrorInstance := mirror.NewDefaultMirror(config.Logger)
 
-	// Setup source once during client creation
+	// Setup both GitHub and generic sources
 	githubSource := sources.NewGitHubSource(config.Logger)
 	if err := mirrorInstance.AddSource("github", githubSource); err != nil {
-		return nil, fmt.Errorf("failed to add source: %w", err)
+		return nil, fmt.Errorf("failed to add GitHub source: %w", err)
+	}
+
+	genericSource := sources.NewGenericSource(config.Logger)
+	if err := mirrorInstance.AddSource("generic", genericSource); err != nil {
+		return nil, fmt.Errorf("failed to add generic source: %w", err)
 	}
 
 	client := &Client{
@@ -202,6 +207,12 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 			ctx, cancel = context.WithTimeout(ctx, c.Config.Timeout)
 			defer cancel()
 		}
+	}
+
+	// Detect source type and ensure the appropriate source is available
+	sourceType := c.DetectSourceType(request.Source, request.SourcePathStrip)
+	if err := c.EnsureSourceAvailable(sourceType); err != nil {
+		return nil, fmt.Errorf("failed to setup source: %w", err)
 	}
 
 	// Create destination key for caching (includes source path strip config)
@@ -252,6 +263,7 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 		Concurrent: c.Config.Concurrent,
 		DryRun:     request.DryRun,
 		DryRunMode: request.DryRunMode,
+		Unzip:      request.Unzip,
 	}
 
 	// Perform mirror operation
@@ -411,4 +423,45 @@ func (c *Client) createDestination(destPath, sourcePathStrip string) (core.Desti
 	}
 
 	return destinations.NewJFrogDestination(jfrogConfig, c.logger), nil
+}
+
+// DetectSourceType determines the source type based on the URL.
+// When SourcePathStrip is provided, it strips the prefix first to determine the actual source.
+func (c *Client) DetectSourceType(sourceURL, sourcePathStrip string) string {
+	// If source path strip is provided, apply it first to get the actual source URL
+	urlToCheck := sourceURL
+	if sourcePathStrip != "" {
+		// Strip the prefix if it exists in the URL
+		if strings.Contains(sourceURL, sourcePathStrip) {
+			// Find the position after the strip prefix
+			if idx := strings.Index(sourceURL, sourcePathStrip); idx != -1 {
+				urlToCheck = sourceURL[idx+len(sourcePathStrip):]
+				// Ensure it starts with a scheme
+				if !strings.HasPrefix(urlToCheck, "http://") && !strings.HasPrefix(urlToCheck, "https://") {
+					urlToCheck = "https://" + urlToCheck
+				}
+			}
+		}
+	}
+
+	// Check if it's a GitHub URL
+	if isGitHub, _ := core.IsGitHubURL(urlToCheck); isGitHub {
+		return "github"
+	}
+
+	// For non-GitHub URLs, use generic source type
+	return "generic"
+}
+
+// EnsureSourceAvailable ensures that the appropriate source is available in the mirror.
+func (c *Client) EnsureSourceAvailable(sourceType string) error {
+	// Check if the source is already available
+	_, err := c.mirror.GetSource(sourceType)
+	if err == nil {
+		// Source is already available
+		return nil
+	}
+
+	// Source not found, this shouldn't happen since we set up both sources in NewClient
+	return fmt.Errorf("source type %s is not available", sourceType)
 }

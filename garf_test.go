@@ -706,3 +706,116 @@ func TestClient_ValidateRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestClient_SourceTypeDetection(t *testing.T) {
+	config := garf.Config{
+		JFrogURL:      "https://test.jfrog.io/artifactory",
+		JFrogUser:     "test",
+		JFrogPassword: "test",
+	}
+
+	client, err := garf.NewClient(config)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name               string
+		sourceURL          string
+		sourcePathStrip    string
+		expectedSourceType string
+	}{
+		{
+			name:               "GitHub URL",
+			sourceURL:          "https://github.com/owner/repo/releases/download/v1.0.0/file.zip",
+			sourcePathStrip:    "",
+			expectedSourceType: "github",
+		},
+		{
+			name:               "JFrog URL without strip",
+			sourceURL:          "https://artifactory.corp.net/staging/file.zip",
+			sourcePathStrip:    "",
+			expectedSourceType: "generic",
+		},
+		{
+			name:               "JFrog URL with strip revealing GitHub",
+			sourceURL:          "https://artifactory.corp.net/staging/github.com/owner/repo/releases/download/v1.0.0/file.zip",
+			sourcePathStrip:    "artifactory.corp.net/staging/",
+			expectedSourceType: "github",
+		},
+		{
+			name:               "JFrog URL with strip revealing non-GitHub",
+			sourceURL:          "https://artifactory.corp.net/staging/some-other-host.com/file.zip",
+			sourcePathStrip:    "artifactory.corp.net/staging/",
+			expectedSourceType: "generic",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sourceType := client.DetectSourceType(tt.sourceURL, tt.sourcePathStrip)
+			require.Equal(t, tt.expectedSourceType, sourceType)
+
+			// Verify the source is available
+			err := client.EnsureSourceAvailable(sourceType)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestClient_SourcePathStripValidation(t *testing.T) {
+	config := garf.Config{
+		JFrogURL:      "https://test.jfrog.io/artifactory",
+		JFrogUser:     "test",
+		JFrogPassword: "test",
+	}
+
+	client, err := garf.NewClient(config)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name            string
+		sourcePathStrip string
+		wantErr         bool
+		errMsg          string
+	}{
+		{
+			name:            "valid path strip",
+			sourcePathStrip: "artifactory.corp.net/staging/",
+			wantErr:         false,
+		},
+		{
+			name:            "empty path strip",
+			sourcePathStrip: "",
+			wantErr:         false,
+		},
+		{
+			name:            "path traversal attack",
+			sourcePathStrip: "../../malicious",
+			wantErr:         true,
+			errMsg:          "source path strip cannot contain '..' for security reasons",
+		},
+		{
+			name:            "https scheme",
+			sourcePathStrip: "https://malicious.com/",
+			wantErr:         true,
+			errMsg:          "source path strip should not include the URL scheme",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := garf.MirrorRequest{
+				Source:          "https://github.com/example/repo/releases/download/v1.0/file.zip",
+				Destination:     "test-repo",
+				SourcePathStrip: tt.sourcePathStrip,
+			}
+
+			err := client.ValidateRequest(request)
+			if tt.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
