@@ -37,10 +37,11 @@ func SetupDestination(logger *logrus.Logger, config *config.Config) (core.Destin
 	switch config.Destination.Type {
 	case "jfrog":
 		destConfig := destinations.JFrogConfig{
-			URL:      config.Destination.URL,
-			User:     config.Destination.User,
-			Password: config.Destination.Password,
-			DestPath: config.Destination.DestPath,
+			URL:             config.Destination.URL,
+			User:            config.Destination.User,
+			Password:        config.Destination.Password,
+			DestPath:        config.Destination.DestPath,
+			SourcePathStrip: config.Destination.SourcePathStrip,
 		}
 		destination = destinations.NewJFrogDestination(destConfig, logger)
 	default:

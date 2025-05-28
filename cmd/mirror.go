@@ -35,6 +35,7 @@ type MirrorFlags struct {
 	PreserveZipName        bool
 	DryRun                 bool
 	DryRunMode             string
+	SourcePathStrip        string
 	JFrogURL               string
 	JFrogUser              string
 	JFrogPassword          string
@@ -182,6 +183,12 @@ func setupMirrorFlags(cmd *cobra.Command, flags *MirrorFlags) {
 		false,
 		"Read JFrog Artifactory password from stdin (more secure than --jfrog-password)",
 	)
+	cmd.Flags().StringVar(
+		&flags.SourcePathStrip,
+		"source-path-strip",
+		"",
+		"Strip path prefixes from source URLs before processing (e.g., 'artifactory.corp.net/staging/' for JFrog-hosted artifacts)",
+	)
 }
 
 // runMirror executes the mirror operation.
@@ -321,21 +328,29 @@ func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
 	}
 
 	// Create config
-	return &config.Config{
+	cfg := &config.Config{
 		Source: config.SourceConfig{
 			Type: "github",
 			URL:  flags.Source,
 		},
 		Destination: config.DestinationConfig{
-			Type:     "jfrog",
-			URL:      jfrogURL,
-			User:     jfrogUser,
-			Password: jfrogPassword,
-			DestPath: flags.Destination,
+			Type:            "jfrog",
+			URL:             jfrogURL,
+			User:            jfrogUser,
+			Password:        jfrogPassword,
+			DestPath:        flags.Destination,
+			SourcePathStrip: flags.SourcePathStrip,
 		},
 		LogLevel:   "info",
 		Concurrent: defaultConcurrent,
-	}, nil
+	}
+
+	// Validate the configuration
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
+
+	return cfg, nil
 }
 
 // getJFrogURL retrieves and normalizes the JFrog URL from flags or environment.
