@@ -467,3 +467,209 @@ func TestJFrogDestinationArtifactNameInPath(t *testing.T) {
 	require.Contains(t, env.lastPath, "/generic-local/github.com/bazelbuild/bazel/8.2.1/bazel_nojdk-8.2.1-windows-x86_64.exe")
 	require.Contains(t, env.lastPath, "type=binary")
 }
+
+// sourcePathStripTestCase defines a test case for source path stripping.
+type sourcePathStripTestCase struct {
+	name            string
+	sourceURL       string
+	sourcePathStrip string
+	expectedPath    string
+	pathChecks      []string
+	pathNotChecks   []string
+}
+
+// getSourcePathStripTestCases returns test cases for source path stripping.
+func getSourcePathStripTestCases() []sourcePathStripTestCase {
+	return []sourcePathStripTestCase{
+		{
+			name:            "JFrog to JFrog - strip staging prefix",
+			sourceURL:       "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourcePathStrip: "artifactory.corp.net/staging/",
+			pathChecks: []string{
+				"/generic-local/github.com/bazelbuild/bazel/v8.2.1/test-artifact",
+			},
+			pathNotChecks: []string{
+				"artifactory.corp.net",
+				"staging",
+			},
+		},
+		{
+			name:            "JFrog to JFrog - strip with trailing slash",
+			sourceURL:       "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourcePathStrip: "artifactory.corp.net/staging",
+			pathChecks: []string{
+				"/generic-local/github.com/bazelbuild/bazel/v8.2.1/test-artifact",
+			},
+			pathNotChecks: []string{
+				"artifactory.corp.net",
+				"staging",
+			},
+		},
+		{
+			name:            "JFrog to JFrog - strip host only",
+			sourceURL:       "https://artifactory.corp.net/repo/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourcePathStrip: "artifactory.corp.net",
+			pathChecks: []string{
+				"/generic-local/github.com/bazelbuild/bazel/v8.2.1/test-artifact",
+			},
+			pathNotChecks: []string{
+				"artifactory.corp.net",
+			},
+		},
+		{
+			name:            "No stripping when prefix not found",
+			sourceURL:       "https://github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourcePathStrip: "artifactory.corp.net/staging/",
+			pathChecks: []string{
+				"/generic-local/github.com/bazelbuild/bazel/v8.2.1/test-artifact",
+			},
+		},
+		{
+			name:            "Empty strip prefix",
+			sourceURL:       "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourcePathStrip: "",
+			pathChecks: []string{
+				"/generic-local/test-artifact", // Falls back to default processor when not GitHub
+			},
+		},
+		{
+			name:            "Strip from host+path combination",
+			sourceURL:       "https://example.com/artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourcePathStrip: "artifactory.corp.net/staging/",
+			pathChecks: []string{
+				"/generic-local/github.com/bazelbuild/bazel/v8.2.1/test-artifact",
+			},
+			pathNotChecks: []string{
+				"artifactory.corp.net",
+				"staging",
+			},
+		},
+	}
+}
+
+func TestJFrogDestinationSourcePathStripping(t *testing.T) {
+	env := setupTestEnv(t)
+	env.setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	})
+	defer env.cleanup()
+
+	tests := getSourcePathStripTestCases()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := env.config
+			config.SourcePathStrip = tt.sourcePathStrip
+
+			artifact := &core.Artifact{
+				Name:     "test-artifact",
+				Version:  "1.0.0",
+				Location: tt.sourceURL,
+				Metadata: map[string]string{
+					"type": "binary",
+				},
+			}
+
+			dest := destinations.NewJFrogDestination(config, env.logger)
+			err := dest.Put(context.Background(), artifact, strings.NewReader("test content"), false)
+			require.NoError(t, err)
+
+			// Check that expected paths are present
+			for _, check := range tt.pathChecks {
+				require.Contains(t, env.lastPath, check, "Expected path check failed: %s", check)
+			}
+
+			// Check that unwanted paths are not present
+			for _, notCheck := range tt.pathNotChecks {
+				require.NotContains(t, env.lastPath, notCheck, "Unwanted path found: %s", notCheck)
+			}
+		})
+	}
+}
+
+func TestJFrogDestinationSourcePathStrippingWithRawMode(t *testing.T) {
+	env := setupTestEnv(t)
+	env.setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	})
+	defer env.cleanup()
+
+	config := env.config
+	config.SourcePathStrip = "artifactory.corp.net/staging/"
+
+	artifact := &core.Artifact{
+		Name:     "test-artifact",
+		Version:  "1.0.0",
+		Location: "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+		Metadata: map[string]string{
+			"type": "binary",
+		},
+	}
+
+	dest := destinations.NewJFrogDestination(config, env.logger)
+	err := dest.Put(context.Background(), artifact, strings.NewReader("test content"), true) // raw=true
+	require.NoError(t, err)
+
+	// In raw mode with stripping, we should get the raw structure but without the stripped prefix
+	require.Contains(t, env.lastPath, "/generic-local/github.com/bazelbuild/bazel/releases/download/v8.2.1/test-artifact")
+	require.NotContains(t, env.lastPath, "artifactory.corp.net")
+	require.NotContains(t, env.lastPath, "staging")
+}
+
+func TestJFrogDestinationBuildTargetURLWithSourcePathStrip(t *testing.T) {
+	env := setupTestEnv(t)
+
+	tests := []struct {
+		name            string
+		sourceURL       string
+		sourcePathStrip string
+		urlChecks       []string
+		urlNotChecks    []string
+	}{
+		{
+			name:            "strip staging prefix",
+			sourceURL:       "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourcePathStrip: "artifactory.corp.net/staging/",
+			urlChecks: []string{
+				"/generic-local/github.com/bazelbuild/bazel/v8.2.1/test-artifact",
+			},
+			urlNotChecks: []string{
+				"artifactory.corp.net",
+				"staging",
+			},
+		},
+		{
+			name:            "no stripping when prefix not found",
+			sourceURL:       "https://github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourcePathStrip: "artifactory.corp.net/staging/",
+			urlChecks: []string{
+				"/generic-local/github.com/bazelbuild/bazel/v8.2.1/test-artifact",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := env.config
+			config.SourcePathStrip = tt.sourcePathStrip
+
+			artifact := &core.Artifact{
+				Name:     "test-artifact",
+				Version:  "1.0.0",
+				Location: tt.sourceURL,
+			}
+
+			dest := destinations.NewJFrogDestination(config, env.logger)
+			url, err := dest.BuildTargetURL(artifact, false)
+			require.NoError(t, err)
+
+			urlStr := url.String()
+			for _, check := range tt.urlChecks {
+				require.Contains(t, urlStr, check)
+			}
+
+			for _, notCheck := range tt.urlNotChecks {
+				require.NotContains(t, urlStr, notCheck)
+			}
+		})
+	}
+}

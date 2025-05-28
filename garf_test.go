@@ -2,6 +2,8 @@ package garf_test
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -271,6 +273,16 @@ func TestClient_validateRequest(t *testing.T) {
 			},
 			expectError: false,
 		},
+		{
+			name: "request with source path stripping",
+			request: garf.MirrorRequest{
+				Source:          "https://artifactory.corp.net/staging/github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+				Destination:     "my-repo",
+				SourcePathStrip: "artifactory.corp.net/staging/",
+				Properties:      map[string]string{"type": "binary"},
+			},
+			expectError: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -385,4 +397,271 @@ func TestClient_DestinationCaching(t *testing.T) {
 	require.Equal(t, 2, client.GetCachedDestinationsCount())
 	require.True(t, client.IsCachedDestination("test-repo"))
 	require.True(t, client.IsCachedDestination("different-repo"))
+}
+
+func TestClient_SourcePathStripping(t *testing.T) {
+	client, err := garf.NewClient(garf.Config{
+		JFrogURL:      "https://test.jfrog.io/artifactory",
+		JFrogUser:     "testuser",
+		JFrogPassword: "testpass",
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	tests := []struct {
+		name            string
+		sourceURL       string
+		sourcePathStrip string
+		destination     string
+		expectError     bool
+	}{
+		{
+			name:            "JFrog to JFrog mirroring with staging prefix strip",
+			sourceURL:       "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourcePathStrip: "artifactory.corp.net/staging/",
+			destination:     "prod-repo",
+			expectError:     false,
+		},
+		{
+			name:            "JFrog to JFrog mirroring with host strip",
+			sourceURL:       "https://artifactory.corp.net/repo/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourcePathStrip: "artifactory.corp.net",
+			destination:     "prod-repo",
+			expectError:     false,
+		},
+		{
+			name:            "No stripping when prefix not found",
+			sourceURL:       "https://github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourcePathStrip: "artifactory.corp.net/staging/",
+			destination:     "prod-repo",
+			expectError:     false,
+		},
+		{
+			name:            "Empty strip prefix",
+			sourceURL:       "https://github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+			sourcePathStrip: "",
+			destination:     "prod-repo",
+			expectError:     false,
+		},
+		{
+			name:            "Valid request with source path stripping",
+			sourceURL:       "https://artifactory.corp.net/staging/github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+			sourcePathStrip: "artifactory.corp.net/staging/",
+			destination:     "my-repo",
+			expectError:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := garf.MirrorRequest{
+				Source:          tt.sourceURL,
+				Destination:     tt.destination,
+				SourcePathStrip: tt.sourcePathStrip,
+				DryRun:          true,
+				DryRunMode:      "all", // Skip everything for testing
+			}
+
+			result, err := client.Mirror(ctx, request)
+
+			if tt.expectError {
+				require.Error(t, err)
+				require.Nil(t, result)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, tt.sourceURL, result.Source)
+				require.NoError(t, result.Error)
+			}
+		})
+	}
+}
+
+func TestClient_DestinationCachingWithSourcePathStrip(t *testing.T) {
+	client, err := garf.NewClient(garf.Config{
+		JFrogURL:      "https://test.jfrog.io/artifactory",
+		JFrogUser:     "testuser",
+		JFrogPassword: "testpass",
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// First call with source path stripping
+	_, err = client.Mirror(ctx, garf.MirrorRequest{
+		Source:          "https://artifactory.corp.net/staging/github.com/test/repo/releases/download/v1.0.0/file1.txt",
+		Destination:     "test-repo",
+		SourcePathStrip: "artifactory.corp.net/staging/",
+		DryRun:          true,
+		DryRunMode:      "all",
+	})
+	require.NoError(t, err)
+
+	// Second call to the same destination with same stripping - should reuse cached destination
+	_, err = client.Mirror(ctx, garf.MirrorRequest{
+		Source:          "https://artifactory.corp.net/staging/github.com/test/repo/releases/download/v1.0.0/file2.txt",
+		Destination:     "test-repo",
+		SourcePathStrip: "artifactory.corp.net/staging/", // Same stripping as above
+		DryRun:          true,
+		DryRunMode:      "all",
+	})
+	require.NoError(t, err)
+
+	// Third call to the same destination with different stripping - should create new destination
+	_, err = client.Mirror(ctx, garf.MirrorRequest{
+		Source:          "https://artifactory.corp.net/other/github.com/test/repo/releases/download/v1.0.0/file3.txt",
+		Destination:     "test-repo",
+		SourcePathStrip: "artifactory.corp.net/other/", // Different stripping
+		DryRun:          true,
+		DryRunMode:      "all",
+	})
+	require.NoError(t, err)
+
+	// Fourth call to the same destination with no stripping - should create another new destination
+	_, err = client.Mirror(ctx, garf.MirrorRequest{
+		Source:      "https://github.com/test/repo/releases/download/v1.0.0/file4.txt",
+		Destination: "test-repo",
+		// No SourcePathStrip
+		DryRun:     true,
+		DryRunMode: "all",
+	})
+	require.NoError(t, err)
+
+	// Verify that we have exactly 3 destinations cached (same repo name but different stripping configs)
+	require.Equal(t, 3, client.GetCachedDestinationsCount())
+	require.True(t, client.IsCachedDestination("test-repo|strip:artifactory.corp.net/staging/"))
+	require.True(t, client.IsCachedDestination("test-repo|strip:artifactory.corp.net/other/"))
+	require.True(t, client.IsCachedDestination("test-repo"))
+}
+
+func TestMirrorRequest_WithSourcePathStrip(t *testing.T) {
+	client, err := garf.NewClient(garf.Config{
+		JFrogURL:      "https://test.jfrog.io/artifactory",
+		JFrogUser:     "testuser",
+		JFrogPassword: "testpass",
+	})
+	require.NoError(t, err)
+
+	// Test that a request with SourcePathStrip is valid
+	request := garf.MirrorRequest{
+		Source:          "https://artifactory.corp.net/staging/github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+		Destination:     "my-repo",
+		SourcePathStrip: "artifactory.corp.net/staging/",
+		Properties:      map[string]string{"type": "binary"},
+		Raw:             false,
+		Unzip:           false,
+		DryRun:          true,
+		DryRunMode:      "all",
+	}
+
+	err = client.ValidateRequest(request)
+	require.NoError(t, err)
+
+	// Test that the request can be processed
+	ctx := context.Background()
+	result, err := client.Mirror(ctx, request)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, request.Source, result.Source)
+	require.NoError(t, result.Error)
+}
+
+func TestClient_RaceConditionInDestinationCaching(t *testing.T) {
+	client, err := garf.NewClient(garf.Config{
+		JFrogURL:      "https://test.jfrog.io/artifactory",
+		JFrogUser:     "testuser",
+		JFrogPassword: "testpass",
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	numGoroutines := 100
+	numIterations := 10
+
+	// Use a channel to synchronize goroutine starts
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+
+	// Test concurrent access to the same destination
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			<-start // Wait for signal to start
+
+			for j := 0; j < numIterations; j++ {
+				_, err := client.Mirror(ctx, garf.MirrorRequest{
+					Source:      fmt.Sprintf("https://github.com/test/repo/releases/download/v1.0.0/file-%d-%d.txt", id, j),
+					Destination: "test-repo", // Same destination for all
+					DryRun:      true,
+					DryRunMode:  "all",
+				})
+				require.NoError(t, err)
+			}
+		}(i)
+	}
+
+	// Start all goroutines at once
+	close(start)
+	wg.Wait()
+
+	// Verify that we have exactly 1 destination cached (no race condition corruption)
+	require.Equal(t, 1, client.GetCachedDestinationsCount())
+	require.True(t, client.IsCachedDestination("test-repo"))
+}
+
+func TestClient_RaceConditionWithDifferentSourcePathStrip(t *testing.T) {
+	client, err := garf.NewClient(garf.Config{
+		JFrogURL:      "https://test.jfrog.io/artifactory",
+		JFrogUser:     "testuser",
+		JFrogPassword: "testpass",
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	numGoroutines := 50
+
+	// Use a channel to synchronize goroutine starts
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+
+	// Test concurrent access with different source path strip configurations
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			<-start // Wait for signal to start
+
+			// Alternate between different strip configurations
+			var sourcePathStrip string
+			switch id % 3 {
+			case 0:
+				sourcePathStrip = "artifactory.corp.net/staging/"
+			case 1:
+				sourcePathStrip = "artifactory.corp.net/other/"
+			case 2:
+				sourcePathStrip = "" // No stripping
+			}
+
+			_, err := client.Mirror(ctx, garf.MirrorRequest{
+				Source:          fmt.Sprintf("https://artifactory.corp.net/staging/github.com/test/repo/releases/download/v1.0.0/file-%d.txt", id),
+				Destination:     "test-repo",
+				SourcePathStrip: sourcePathStrip,
+				DryRun:          true,
+				DryRunMode:      "all",
+			})
+			require.NoError(t, err)
+		}(i)
+	}
+
+	// Start all goroutines at once
+	close(start)
+	wg.Wait()
+
+	// Verify that we have exactly 3 destinations cached (one for each strip config)
+	require.Equal(t, 3, client.GetCachedDestinationsCount())
+	require.True(t, client.IsCachedDestination("test-repo|strip:artifactory.corp.net/staging/"))
+	require.True(t, client.IsCachedDestination("test-repo|strip:artifactory.corp.net/other/"))
+	require.True(t, client.IsCachedDestination("test-repo"))
 }

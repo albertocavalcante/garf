@@ -24,6 +24,18 @@
 //	if err != nil {
 //		log.Fatal(err)
 //	}
+//
+// For JFrog-to-JFrog mirroring with source path stripping:
+//
+//	result, err := client.Mirror(ctx, garf.MirrorRequest{
+//		Source:          "https://artifactory.corp.net/staging/github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+//		Destination:     "prod-repo",
+//		SourcePathStrip: "artifactory.corp.net/staging/", // Strip staging prefix
+//		Properties:      map[string]string{"type": "binary"},
+//	})
+//	if err != nil {
+//		log.Fatal(err)
+//	}
 package garf
 
 import (
@@ -31,6 +43,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"sync"
 	"time"
 
 	"github.com/albertocavalcante/garf/pkg/core"
@@ -98,6 +111,13 @@ type MirrorRequest struct {
 	// Optional: Dry run mode - "all" skips everything, "upload" skips only upload
 	DryRun     bool
 	DryRunMode string
+
+	// Optional: Source path prefix to strip from source URLs before processing.
+	// This is useful for JFrog-to-JFrog mirroring where you want to remove the source
+	// repository path. For example, setting this to "artifactory.corp.net/staging/"
+	// will strip that prefix from source URLs before generating the destination path.
+	// This enables clean mirroring from staging to production repositories.
+	SourcePathStrip string
 }
 
 // MirrorResult represents the result of a mirror operation.
@@ -117,7 +137,8 @@ type Client struct {
 	Config       Config
 	logger       *logrus.Logger
 	mirror       *mirror.DefaultMirror
-	destinations map[string]bool // Track registered destinations by path
+	destinations map[string]core.Destination
+	mu           sync.RWMutex // Protects destinations map
 }
 
 // NewClient creates a new garf client with the provided configuration.
@@ -153,7 +174,7 @@ func NewClient(config Config) (*Client, error) {
 		Config:       config,
 		logger:       config.Logger,
 		mirror:       mirrorInstance,
-		destinations: make(map[string]bool),
+		destinations: make(map[string]core.Destination),
 	}
 
 	return client, nil
@@ -161,6 +182,14 @@ func NewClient(config Config) (*Client, error) {
 
 // Mirror performs a single mirror operation.
 func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResult, error) {
+	logger := c.logger.WithFields(logrus.Fields{
+		"source":      request.Source,
+		"destination": request.Destination,
+		"dry_run":     request.DryRun,
+	})
+
+	logger.Info("Starting mirror operation")
+
 	if err := c.ValidateRequest(request); err != nil {
 		return nil, fmt.Errorf("invalid request: %w", err)
 	}
@@ -174,23 +203,35 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 		}
 	}
 
-	// Setup destination (cache destinations by path to avoid re-registration)
+	// Create destination key for caching (includes source path strip config)
 	destKey := request.Destination
-	if !c.destinations[destKey] {
-		jfrogConfig := destinations.JFrogConfig{
-			URL:      c.Config.JFrogURL,
-			User:     c.Config.JFrogUser,
-			Password: c.Config.JFrogPassword,
-			DestPath: request.Destination,
+	if request.SourcePathStrip != "" {
+		destKey = fmt.Sprintf("%s|strip:%s", request.Destination, request.SourcePathStrip)
+	}
+
+	// Get or create destination with proper locking
+	c.mu.Lock()
+	dest, exists := c.destinations[destKey]
+	if !exists {
+		// Create new destination
+		var err error
+		dest, err = c.createDestination(request.Destination, request.SourcePathStrip)
+		if err != nil {
+			c.mu.Unlock()
+			logger.WithError(err).Error("Failed to create destination")
+			return nil, fmt.Errorf("failed to create destination: %w", err)
 		}
 
-		jfrogDest := destinations.NewJFrogDestination(jfrogConfig, c.logger)
-		if err := c.mirror.AddDestination(destKey, jfrogDest); err != nil {
+		// Register destination with mirror
+		if err := c.mirror.AddDestination(destKey, dest); err != nil {
+			c.mu.Unlock()
+			logger.WithError(err).Error("Failed to register destination with mirror")
 			return nil, fmt.Errorf("failed to add destination: %w", err)
 		}
 
-		c.destinations[destKey] = true
+		c.destinations[destKey] = dest
 	}
+	c.mu.Unlock()
 
 	// Create artifact
 	artifact := &core.Artifact{
@@ -318,10 +359,28 @@ func ExtractArtifactName(urlStr string) string {
 
 // GetCachedDestinationsCount returns the number of cached destinations (for testing).
 func (c *Client) GetCachedDestinationsCount() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return len(c.destinations)
 }
 
 // IsCachedDestination checks if a destination is cached (for testing).
-func (c *Client) IsCachedDestination(destination string) bool {
-	return c.destinations[destination]
+func (c *Client) IsCachedDestination(key string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	_, exists := c.destinations[key]
+	return exists
+}
+
+// createDestination creates a new JFrog destination with the given configuration.
+func (c *Client) createDestination(destPath, sourcePathStrip string) (core.Destination, error) {
+	jfrogConfig := destinations.JFrogConfig{
+		URL:             c.Config.JFrogURL,
+		User:            c.Config.JFrogUser,
+		Password:        c.Config.JFrogPassword,
+		DestPath:        destPath,
+		SourcePathStrip: sourcePathStrip,
+	}
+
+	return destinations.NewJFrogDestination(jfrogConfig, c.logger), nil
 }
