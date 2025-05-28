@@ -331,7 +331,7 @@ func TestMirrorCmdFlagRegistration(t *testing.T) {
 	expectedFlags := []string{
 		"config", "source", "destination", "from-file",
 		"raw", "properties", "unzip", "dry-run",
-		"dry-run-mode", "jfrog-url", "jfrog-user", "jfrog-password",
+		"dry-run-mode", "source-path-strip", "jfrog-url", "jfrog-user", "jfrog-password",
 	}
 
 	mirrorCmd := cmd.NewMirrorCmd()
@@ -450,6 +450,68 @@ func TestGetConfig(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedURL, config.Destination.URL)
 			require.Equal(t, tc.expectedPath, config.Destination.DestPath)
+		})
+	}
+}
+
+func TestSourcePathStripValidation(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.cleanup()
+
+	testCases := []struct {
+		name            string
+		sourcePathStrip string
+		wantErr         bool
+		errMsg          string
+	}{
+		{
+			name:            "valid path strip",
+			sourcePathStrip: "artifactory.corp.net/staging/",
+			wantErr:         false,
+		},
+		{
+			name:            "empty path strip",
+			sourcePathStrip: "",
+			wantErr:         false,
+		},
+		{
+			name:            "path traversal attack",
+			sourcePathStrip: "../../malicious",
+			wantErr:         true,
+			errMsg:          "source path strip cannot contain '..' for security reasons",
+		},
+		{
+			name:            "https scheme",
+			sourcePathStrip: "https://malicious.com/",
+			wantErr:         true,
+			errMsg:          "source path strip should not include the URL scheme",
+		},
+		{
+			name:            "http scheme",
+			sourcePathStrip: "http://malicious.com/",
+			wantErr:         true,
+			errMsg:          "source path strip should not include the URL scheme",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			flags := &cmd.MirrorFlags{
+				Source:          "https://github.com/example/repo/releases/download/v1.0/file.zip",
+				Destination:     "test-repo",
+				SourcePathStrip: tc.sourcePathStrip,
+				JFrogURL:        "https://test.jfrog.io/artifactory",
+				JFrogUser:       "user",
+				JFrogPassword:   "password",
+			}
+
+			_, err := cmd.ValidateAndGetConfig(flags)
+			if tc.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.errMsg)
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }

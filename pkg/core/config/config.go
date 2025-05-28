@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/albertocavalcante/garf/pkg/core"
 	yaml "gopkg.in/yaml.v3"
@@ -31,11 +32,12 @@ type SourceConfig struct {
 
 // DestinationConfig represents the configuration for a destination.
 type DestinationConfig struct {
-	Type     string `yaml:"type"`
-	URL      string `yaml:"url"`
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
-	DestPath string `yaml:"dest_path"`
+	Type            string `yaml:"type"`
+	URL             string `yaml:"url"`
+	User            string `yaml:"user"`
+	Password        string `yaml:"password"`
+	DestPath        string `yaml:"dest_path"`
+	SourcePathStrip string `yaml:"source_path_strip"`
 }
 
 // Source represents a source from which artifacts can be retrieved.
@@ -122,6 +124,19 @@ func (c *Config) validateDestination() error {
 
 	if c.Destination.Password == "" {
 		return fmt.Errorf("destination password cannot be empty")
+	}
+
+	// Validate SourcePathStrip if specified
+	if c.Destination.SourcePathStrip != "" {
+		// Check for invalid characters that could cause issues
+		if strings.Contains(c.Destination.SourcePathStrip, "..") {
+			return fmt.Errorf("source path strip cannot contain '..' for security reasons")
+		}
+
+		// Ensure it doesn't start with a scheme (should be a path/host component)
+		if strings.HasPrefix(c.Destination.SourcePathStrip, "http://") || strings.HasPrefix(c.Destination.SourcePathStrip, "https://") {
+			return fmt.Errorf("source path strip should not include the URL scheme (http:// or https://)")
+		}
 	}
 
 	return nil
