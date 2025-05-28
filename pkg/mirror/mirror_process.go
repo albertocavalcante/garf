@@ -19,6 +19,8 @@ func SetupSource(logger *logrus.Logger, config *config.Config) (core.Source, err
 	switch config.Source.Type {
 	case "github":
 		source = sources.NewGitHubSource(logger)
+	case "generic":
+		source = sources.NewGenericSource(logger)
 	default:
 		return nil, fmt.Errorf("unsupported source type: %s", config.Source.Type)
 	}

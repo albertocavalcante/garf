@@ -523,16 +523,28 @@ func (m *DefaultMirror) buildPreservedZipName(zipName, extractedName string) str
 	zipBaseName := strings.TrimSuffix(zipName, ".zip")
 	zipBaseName = strings.TrimSuffix(zipBaseName, ".ZIP") // Handle uppercase too
 
-	// Get the extension from the extracted file
-	extractedExt := filepath.Ext(extractedName)
+	// Extract all extensions from the extracted file name
+	// For files like "file.tar.gz", we want to preserve ".tar.gz", not just ".gz"
+	extractedBaseName := extractedName
+	var extensions []string
 
-	// If the extracted file has no extension, return the ZIP base name as-is
-	if extractedExt == "" {
+	// Keep extracting extensions until we can't find any more
+	for {
+		ext := filepath.Ext(extractedBaseName)
+		if ext == "" {
+			break
+		}
+		extensions = append([]string{ext}, extensions...) // Prepend to maintain order
+		extractedBaseName = strings.TrimSuffix(extractedBaseName, ext)
+	}
+
+	// If the extracted file has no extensions, return the ZIP base name as-is
+	if len(extensions) == 0 {
 		return zipBaseName
 	}
 
-	// Combine the ZIP base name with the extracted file's extension
-	return zipBaseName + extractedExt
+	// Combine the ZIP base name with all the extracted file's extensions
+	return zipBaseName + strings.Join(extensions, "")
 }
 
 // tempDirCleanupReader wraps a ReadCloser and cleans up a temporary directory when closed.
