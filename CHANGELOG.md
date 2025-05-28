@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/albertocavalcante/garf/compare/v0.4.1...v0.5.0) (2025-05-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* add `generic` source type and handle it better ([#108](https://github.com/albertocavalcante/garf/issues/108))
+
+### Features
+
+* add `generic` source type and handle it better ([#108](https://github.com/albertocavalcante/garf/issues/108)) ([4b0c245](https://github.com/albertocavalcante/garf/commit/4b0c245d99a506db56f5fbcac5b218c1a47e5cb4))
+
 ## [0.4.1](https://github.com/albertocavalcante/garf/compare/v0.4.0...v0.4.1) (2025-05-28)
 
 
