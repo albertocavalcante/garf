@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/albertocavalcante/garf/compare/v0.4.0...v0.4.1) (2025-05-28)
+
+
+### Bug Fixes
+
+* expose `source-path-strip` flag in the cli ([#106](https://github.com/albertocavalcante/garf/issues/106)) ([7be6ac3](https://github.com/albertocavalcante/garf/commit/7be6ac3d0ac99bda568f0c35c6b0620f92b77979))
+
 ## [0.4.0](https://github.com/albertocavalcante/garf/compare/v0.3.4...v0.4.0) (2025-05-28)
 
 
