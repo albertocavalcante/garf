@@ -128,6 +128,9 @@ func (c *Config) validateDestination() error {
 
 	// Validate SourcePathStrip if specified
 	if c.Destination.SourcePathStrip != "" {
+		// Trim whitespace to handle edge cases
+		c.Destination.SourcePathStrip = strings.TrimSpace(c.Destination.SourcePathStrip)
+
 		// Check for invalid characters that could cause issues
 		if strings.Contains(c.Destination.SourcePathStrip, "..") {
 			return fmt.Errorf("source path strip cannot contain '..' for security reasons")
@@ -136,6 +139,11 @@ func (c *Config) validateDestination() error {
 		// Ensure it doesn't start with a scheme (should be a path/host component)
 		if strings.HasPrefix(c.Destination.SourcePathStrip, "http://") || strings.HasPrefix(c.Destination.SourcePathStrip, "https://") {
 			return fmt.Errorf("source path strip should not include the URL scheme (http:// or https://)")
+		}
+
+		// Validate against other potentially dangerous patterns
+		if strings.Contains(c.Destination.SourcePathStrip, "\\") {
+			return fmt.Errorf("source path strip should not contain backslashes")
 		}
 	}
 

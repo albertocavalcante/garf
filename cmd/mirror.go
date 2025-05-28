@@ -187,7 +187,7 @@ func setupMirrorFlags(cmd *cobra.Command, flags *MirrorFlags) {
 		&flags.SourcePathStrip,
 		"source-path-strip",
 		"",
-		"Strip source path prefixes for JFrog-to-JFrog mirroring (e.g., 'artifactory.corp.net/staging/')",
+		"Strip path prefixes from source URLs before processing (e.g., 'artifactory.corp.net/staging/' for JFrog-hosted artifacts)",
 	)
 }
 

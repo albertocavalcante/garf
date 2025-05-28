@@ -492,6 +492,23 @@ func TestSourcePathStripValidation(t *testing.T) {
 			wantErr:         true,
 			errMsg:          "source path strip should not include the URL scheme",
 		},
+		{
+			name:            "path strip with trailing dots",
+			sourcePathStrip: "valid/path/..",
+			wantErr:         true,
+			errMsg:          "source path strip cannot contain '..' for security reasons",
+		},
+		{
+			name:            "path strip with spaces",
+			sourcePathStrip: "  valid/path  ",
+			wantErr:         false,
+		},
+		{
+			name:            "path strip with backslashes",
+			sourcePathStrip: "valid\\path\\with\\backslashes",
+			wantErr:         true,
+			errMsg:          "source path strip should not contain backslashes",
+		},
 	}
 
 	for _, tc := range testCases {
