@@ -199,63 +199,47 @@ func (d *JFrogDestination) stripSourcePath(sourceURL *url.URL) (*url.URL, error)
 		"strip_prefix": stripPrefix,
 	})
 
-	// Create a copy of the URL to avoid modifying the original
-	processedURL := *sourceURL
+	// Get the full URL string for processing
+	fullURL := sourceURL.String()
 
 	// Check if the URL contains the prefix to strip
-	// We'll check both the full URL string and just the host+path combination
-	fullURL := sourceURL.String()
-	hostPath := sourceURL.Host + sourceURL.Path
-
-	var strippedPath string
-	var found bool
-
-	// Try to strip from the full URL first (handles cases with scheme)
-	if strings.HasPrefix(fullURL, stripPrefix) || strings.Contains(fullURL, stripPrefix) {
-		// Find the position after the strip prefix
-		if idx := strings.Index(fullURL, stripPrefix); idx != -1 {
-			afterPrefix := fullURL[idx+len(stripPrefix):]
-			// Remove leading slash if present
-			afterPrefix = strings.TrimPrefix(afterPrefix, "/")
-
-			// Try to reconstruct URL if possible
-			if reconstructedURL := d.tryReconstructURL(afterPrefix, logger, "stripped content"); reconstructedURL != nil {
-				return reconstructedURL, nil
-			}
-
-			strippedPath = "/" + afterPrefix
-			found = true
-		}
-	} else if strings.HasPrefix(hostPath, stripPrefix) || strings.Contains(hostPath, stripPrefix) {
-		// Try stripping from host+path combination
-		if idx := strings.Index(hostPath, stripPrefix); idx != -1 {
-			afterPrefix := hostPath[idx+len(stripPrefix):]
-			// Remove leading slash if present
-			afterPrefix = strings.TrimPrefix(afterPrefix, "/")
-
-			// Try to reconstruct URL if possible
-			if reconstructedURL := d.tryReconstructURL(afterPrefix, logger, "stripped host+path"); reconstructedURL != nil {
-				return reconstructedURL, nil
-			}
-
-			strippedPath = "/" + afterPrefix
-			found = true
-		}
-	}
-
-	if !found {
+	if !strings.Contains(fullURL, stripPrefix) {
 		logger.Debug("Strip prefix not found in URL, returning original URL")
 		return sourceURL, nil
 	}
 
-	// Update the processed URL path
-	processedURL.Path = strippedPath
+	// Find the position after the strip prefix
+	idx := strings.Index(fullURL, stripPrefix)
+	if idx == -1 {
+		logger.Debug("Strip prefix not found in URL, returning original URL")
+		return sourceURL, nil
+	}
+
+	// Extract everything after the strip prefix
+	afterPrefix := fullURL[idx+len(stripPrefix):]
+	// Remove leading slash if present
+	afterPrefix = strings.TrimPrefix(afterPrefix, "/")
+
+	logger.WithField("after_prefix", afterPrefix).Debug("Extracted content after strip prefix")
+
+	// Try to reconstruct URL from the stripped content
+	if reconstructedURL := d.tryReconstructURL(afterPrefix, logger, "stripped content"); reconstructedURL != nil {
+		logger.WithFields(logrus.Fields{
+			"original_url":      sourceURL.String(),
+			"reconstructed_url": reconstructedURL.String(),
+		}).Debug("Successfully reconstructed URL after stripping")
+		return reconstructedURL, nil
+	}
+
+	// If reconstruction failed, create a new URL with the stripped path
+	// Preserve the original scheme and host, but use the stripped path
+	processedURL := *sourceURL
+	processedURL.Path = "/" + afterPrefix
 
 	logger.WithFields(logrus.Fields{
-		"original_path":  sourceURL.Path,
-		"processed_path": processedURL.Path,
-		"processed_url":  processedURL.String(),
-	}).Debug("Successfully stripped source path prefix")
+		"original_url":  sourceURL.String(),
+		"processed_url": processedURL.String(),
+	}).Debug("Created processed URL with stripped path")
 
 	return &processedURL, nil
 }
