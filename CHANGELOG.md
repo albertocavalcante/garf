@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/albertocavalcante/garf/compare/v0.5.0...v0.5.1) (2025-05-28)
+
+
+### Bug Fixes
+
+* strip prefix behavior to keep the rest of the url prefix ([#110](https://github.com/albertocavalcante/garf/issues/110)) ([c3bf43e](https://github.com/albertocavalcante/garf/commit/c3bf43eed76a86cfe8cfecc8b3e36bfa61941299))
+
 ## [0.5.0](https://github.com/albertocavalcante/garf/compare/v0.4.1...v0.5.0) (2025-05-28)
 
 
