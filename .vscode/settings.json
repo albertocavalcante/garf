@@ -11,6 +11,7 @@
         "--experimental_enable_label_completions"
     ],
     "bazel.buildifierFixOnFormat": true,
+    "bazel.buildifierExecutable": "@buildifier_prebuilt//:buildifier",
     "editor.detectIndentation": false,
     "files.exclude": {
         "**/.git": true,
