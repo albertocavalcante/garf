@@ -43,10 +43,15 @@ func NewWithLogger(logger *logrus.Logger) *PathBuilder {
 				canHandle: githubProc.CanProcess,
 				process:   githubProc.Process,
 			},
-			// Default fallback processor
+			// Default fallback processor for non-GitHub URLs
+			// Always preserves full URL structure (host + path)
 			{
 				canHandle: func(u *url.URL) bool { return true },
-				process:   func(u *url.URL, _ bool) string { return path.Base(u.Path) },
+				process: func(u *url.URL, raw bool) string {
+					// The raw flag doesn't affect non-GitHub URLs - they always preserve structure
+					// This ensures that URLs like bcr.bazel.build/modules/... maintain their path structure
+					return u.Host + u.Path
+				},
 			},
 		},
 	}

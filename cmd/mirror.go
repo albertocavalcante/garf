@@ -255,6 +255,11 @@ func runMirror(flags *MirrorFlags) error {
 			"artifact_name":    result.Artifact.Name,
 			"destination_path": result.DestinationPath,
 		}).Info("Successfully mirrored artifact")
+
+		// Also log with a user-friendly message showing the destination URL
+		if result.DestinationPath != "" {
+			logger.Infof("✓ Mirrored to: %s", result.DestinationPath)
+		}
 	}
 
 	if lastErr == nil {
