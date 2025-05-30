@@ -1,8 +1,11 @@
 module github.com/albertocavalcante/garf
 
-go 1.23.7
+go 1.23.9
+
+toolchain go1.24.3
 
 require (
+	github.com/albertocavalcante/netrcgo v0.1.2
 	github.com/jfrog/jfrog-client-go v1.53.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.9.1
@@ -17,6 +20,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
+	github.com/bazelbuild/rules_go v0.54.1 // indirect
 	github.com/cloudflare/circl v1.6.0 // indirect
 	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
