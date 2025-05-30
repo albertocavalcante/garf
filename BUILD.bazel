@@ -17,6 +17,12 @@ alias(
 )
 
 alias(
+    name = "bazel_env",
+    actual = "//tools:bazel_env",
+    visibility = ["//visibility:public"],
+)
+
+alias(
     name = "garf",
     actual = "//cmd/garf:garf",
 )
