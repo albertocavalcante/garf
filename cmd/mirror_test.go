@@ -3,6 +3,7 @@ package cmd_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -270,8 +271,19 @@ func (m *mockDestination) Exists(ctx context.Context, artifact *core.Artifact, r
 	return false, nil
 }
 
-func (m *mockDestination) Put(ctx context.Context, artifact *core.Artifact, reader io.Reader, raw bool) error {
-	return nil
+func (m *mockDestination) Put(ctx context.Context, artifact *core.Artifact, reader io.Reader, raw bool) (string, error) {
+	m.logger.Info("Mock destination: putting artifact")
+
+	// Simulate a destination path
+	destinationPath := fmt.Sprintf("mock-repo/%s", artifact.Name)
+
+	return destinationPath, nil
+}
+
+func (m *mockDestination) BuildDestinationPath(artifact *core.Artifact, raw bool) (string, error) {
+	// Simulate a destination path
+	destinationPath := fmt.Sprintf("mock-repo/%s", artifact.Name)
+	return destinationPath, nil
 }
 
 // Test functions.

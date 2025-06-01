@@ -193,6 +193,30 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 	if opts != nil && opts.DryRun && opts.DryRunMode == "all" {
 		logger.Info("Dry run mode 'all' - skipping download and upload")
 
+		// Build destination paths for dry-run feedback even when skipping everything
+		if len(destinations) > 0 {
+			var destinationPaths []string
+			for _, dest := range destinations {
+				raw := false
+				if opts != nil {
+					raw = opts.Raw
+				}
+
+				destPath, err := dest.BuildDestinationPath(artifact, raw)
+				if err != nil {
+					logger.WithError(err).Warn("Failed to build destination path for dry-run")
+				} else {
+					destinationPaths = append(destinationPaths, destPath)
+				}
+			}
+
+			// Set the first destination path in the result for logging
+			if len(destinationPaths) > 0 {
+				result.DestinationPath = destinationPaths[0]
+				logger.WithField("destination_path", result.DestinationPath).Info("Would upload to destination")
+			}
+		}
+
 		return nil
 	}
 
@@ -225,6 +249,28 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 	if opts != nil && opts.DryRun && opts.DryRunMode == "upload" {
 		logger.Info("Dry run mode 'upload' - skipping upload only")
 
+		// Build destination paths for dry-run feedback
+		var destinationPaths []string
+		for _, dest := range destinations {
+			raw := false
+			if opts != nil {
+				raw = opts.Raw
+			}
+
+			destPath, err := dest.BuildDestinationPath(finalArtifact, raw)
+			if err != nil {
+				logger.WithError(err).Warn("Failed to build destination path for dry-run")
+			} else {
+				destinationPaths = append(destinationPaths, destPath)
+			}
+		}
+
+		// Set the first destination path in the result for logging
+		if len(destinationPaths) > 0 {
+			result.DestinationPath = destinationPaths[0]
+			logger.WithField("destination_path", result.DestinationPath).Info("Would upload to destination")
+		}
+
 		return nil
 	}
 
@@ -250,6 +296,7 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 	var wg sync.WaitGroup
 
 	errChan := make(chan error, len(destinations))
+	destinationPathChan := make(chan string, len(destinations))
 
 	for i, dest := range destinations {
 		wg.Add(1)
@@ -266,31 +313,44 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 				raw = opts.Raw
 			}
 
-			if err := d.Put(ctx, finalArtifact, r, raw); err != nil {
+			destinationPath, err := d.Put(ctx, finalArtifact, r, raw)
+			if err != nil {
 				destLogger.WithError(err).Error("Failed to upload to destination")
 				errChan <- fmt.Errorf("failed to upload to destination: %w", err)
 			} else {
-				destLogger.Info("Successfully uploaded to destination")
+				destLogger.WithField("destination_path", destinationPath).Info("Successfully uploaded to destination")
+				destinationPathChan <- destinationPath
 			}
 		}(dest, readers[i], i)
 	}
 
 	wg.Wait()
 	close(errChan)
+	close(destinationPathChan)
 
 	var lastErr error
 	for err := range errChan {
 		lastErr = err
 	}
 
+	// Get the first successful destination path
+	var destinationPath string
+	for path := range destinationPathChan {
+		if destinationPath == "" {
+			destinationPath = path
+		}
+	}
+
 	if lastErr != nil {
 		logger.WithError(lastErr).Error("One or more uploads failed")
 	} else {
-		logger.Info("All uploads completed successfully")
+		logger.WithField("destination_path", destinationPath).Info("All uploads completed successfully")
 	}
 
 	// Update the result artifact to reflect any changes (like from ZIP extraction)
 	result.Artifact = finalArtifact
+	// Set the destination path in the result
+	result.DestinationPath = destinationPath
 
 	return lastErr
 }

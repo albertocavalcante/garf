@@ -282,7 +282,7 @@ func (d *JFrogDestination) tryReconstructURL(afterPrefix string, logger *logrus.
 }
 
 // Put uploads an artifact to JFrog Artifactory.
-func (d *JFrogDestination) Put(ctx context.Context, artifact *core.Artifact, content io.Reader, raw bool) error {
+func (d *JFrogDestination) Put(ctx context.Context, artifact *core.Artifact, content io.Reader, raw bool) (string, error) {
 	logger := d.logger.WithFields(logrus.Fields{
 		"name":     artifact.Name,
 		"version":  artifact.Version,
@@ -295,7 +295,7 @@ func (d *JFrogDestination) Put(ctx context.Context, artifact *core.Artifact, con
 	if artifact.Location == "" {
 		logger.Error("Artifact location cannot be empty")
 
-		return fmt.Errorf("artifact location cannot be empty")
+		return "", fmt.Errorf("artifact location cannot be empty")
 	}
 
 	// Build the target URL
@@ -303,7 +303,7 @@ func (d *JFrogDestination) Put(ctx context.Context, artifact *core.Artifact, con
 	if err != nil {
 		logger.WithError(err).Error("Failed to build target URL")
 
-		return err
+		return "", err
 	}
 
 	logger.WithField("target_url", targetURL.String()).Info("Built target URL for upload")
@@ -313,7 +313,7 @@ func (d *JFrogDestination) Put(ctx context.Context, artifact *core.Artifact, con
 	if err != nil {
 		logger.WithError(err).Error("Failed to create HTTP request")
 
-		return err
+		return "", err
 	}
 
 	logger.WithFields(logrus.Fields{
@@ -326,7 +326,7 @@ func (d *JFrogDestination) Put(ctx context.Context, artifact *core.Artifact, con
 	if err != nil {
 		logger.WithError(err).Error("Failed to send HTTP request to JFrog")
 
-		return fmt.Errorf("failed to upload artifact: %w", err)
+		return "", fmt.Errorf("failed to upload artifact: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -340,12 +340,12 @@ func (d *JFrogDestination) Put(ctx context.Context, artifact *core.Artifact, con
 	if err := d.handleResponse(resp); err != nil {
 		logger.WithError(err).Error("JFrog upload failed")
 
-		return err
+		return "", err
 	}
 
-	logger.Info("Successfully uploaded artifact to JFrog")
+	logger.WithField("destination_url", targetURL.String()).Info("Successfully uploaded artifact to JFrog")
 
-	return nil
+	return targetURL.String(), nil
 }
 
 // Exists checks if an artifact already exists in JFrog Artifactory.
@@ -479,4 +479,35 @@ func (d *JFrogDestination) Validate() error {
 // GetConfig returns the JFrog configuration (used for testing).
 func (d *JFrogDestination) GetConfig() JFrogConfig {
 	return d.config
+}
+
+// BuildDestinationPath builds the destination path without uploading.
+// This is useful for dry-run mode to show where the artifact would be uploaded.
+func (d *JFrogDestination) BuildDestinationPath(artifact *core.Artifact, raw bool) (string, error) {
+	logger := d.logger.WithFields(logrus.Fields{
+		"name":     artifact.Name,
+		"version":  artifact.Version,
+		"location": artifact.Location,
+		"raw_mode": raw,
+	})
+
+	logger.Debug("Building destination path for artifact")
+
+	if artifact.Location == "" {
+		logger.Error("Artifact location cannot be empty")
+		return "", fmt.Errorf("artifact location cannot be empty")
+	}
+
+	// Build the target URL
+	targetURL, err := d.BuildTargetURL(artifact, raw)
+	if err != nil {
+		logger.WithError(err).Error("Failed to build target URL")
+		return "", err
+	}
+
+	// Return the full destination URL
+	destinationPath := targetURL.String()
+	logger.WithField("destination_path", destinationPath).Debug("Built destination path")
+
+	return destinationPath, nil
 }

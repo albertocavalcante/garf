@@ -2,11 +2,13 @@ package mirror_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"testing"
 
 	"github.com/albertocavalcante/garf/pkg/core"
 	"github.com/albertocavalcante/garf/pkg/mirror"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,10 +30,23 @@ func (s *mockSource) Validate() error {
 
 type mockDestination struct {
 	core.Destination
+	putCalled bool
+	putError  error
+	logger    *logrus.Entry
 }
 
-func (d *mockDestination) Put(ctx context.Context, artifact *core.Artifact, content io.Reader, raw bool) error {
-	return nil
+func (d *mockDestination) Put(ctx context.Context, artifact *core.Artifact, content io.Reader, raw bool) (string, error) {
+	d.putCalled = true
+	d.logger.WithFields(logrus.Fields{
+		"artifact_name":     artifact.Name,
+		"artifact_location": artifact.Location,
+		"raw_mode":          raw,
+	}).Info("Mock destination received artifact")
+
+	// Simulate a destination path
+	destinationPath := fmt.Sprintf("mock-repo/%s", artifact.Name)
+
+	return destinationPath, d.putError
 }
 
 func (d *mockDestination) Exists(ctx context.Context, artifact *core.Artifact, raw bool) (bool, error) {
@@ -40,6 +55,12 @@ func (d *mockDestination) Exists(ctx context.Context, artifact *core.Artifact, r
 
 func (d *mockDestination) Validate() error {
 	return nil
+}
+
+func (d *mockDestination) BuildDestinationPath(artifact *core.Artifact, raw bool) (string, error) {
+	// Simulate a destination path
+	destinationPath := fmt.Sprintf("mock-repo/%s", artifact.Name)
+	return destinationPath, nil
 }
 
 func TestDefaultMirror(t *testing.T) {

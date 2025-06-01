@@ -267,7 +267,7 @@ func TestJFrogDestinationURLHandling(t *testing.T) {
 			}
 
 			dest := destinations.NewJFrogDestination(config, env.logger)
-			err := dest.Put(context.Background(), &artifact, strings.NewReader("test content"), tt.raw)
+			_, err := dest.Put(context.Background(), &artifact, strings.NewReader("test content"), tt.raw)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -459,7 +459,7 @@ func TestJFrogDestinationArtifactNameInPath(t *testing.T) {
 	}
 
 	dest := destinations.NewJFrogDestination(env.config, env.logger)
-	err := dest.Put(context.Background(), artifact, strings.NewReader("test content"), false)
+	_, err := dest.Put(context.Background(), artifact, strings.NewReader("test content"), false)
 	require.NoError(t, err)
 
 	// Verify that the path contains the artifact name (.exe) not the URL filename (.zip)
@@ -529,7 +529,7 @@ func getSourcePathStripTestCases() []sourcePathStripTestCase {
 			sourceURL:       "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-win.exe",
 			sourcePathStrip: "",
 			pathChecks: []string{
-				"/generic-local/test-artifact", // When strip prefix is empty, URL is not recognized as GitHub and falls back to simple artifact name
+				"/generic-local/artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/7.2.1/test-artifact", // When strip prefix is empty, preserve full URL structure
 			},
 		},
 		{
@@ -570,7 +570,7 @@ func TestJFrogDestinationSourcePathStripping(t *testing.T) {
 			}
 
 			dest := destinations.NewJFrogDestination(config, env.logger)
-			err := dest.Put(context.Background(), artifact, strings.NewReader("test content"), false)
+			_, err := dest.Put(context.Background(), artifact, strings.NewReader("test content"), false)
 			require.NoError(t, err)
 
 			// Check that expected paths are present
@@ -606,7 +606,7 @@ func TestJFrogDestinationSourcePathStrippingWithRawMode(t *testing.T) {
 	}
 
 	dest := destinations.NewJFrogDestination(config, env.logger)
-	err := dest.Put(context.Background(), artifact, strings.NewReader("test content"), true) // raw=true
+	_, err := dest.Put(context.Background(), artifact, strings.NewReader("test content"), true) // raw=true
 	require.NoError(t, err)
 
 	// In raw mode with stripping, we should get the raw structure but without the stripped prefix
@@ -684,11 +684,11 @@ func TestJFrogDestination_SourcePathStripping_BugFix(t *testing.T) {
 		description     string
 	}{
 		{
-			name:            "Bug fix: JFrog staging to prod with GitHub URL",
-			sourceURL:       "https://art.corp.net/artifactory/generic/project/staging/github.com/bazel.exe",
+			name:            "Bug fix: JFrog staging to prod with generic URL",
+			sourceURL:       "https://art.corp.net/artifactory/generic/project/staging/some-domain.com/path/bazel.exe",
 			sourcePathStrip: "art.corp.net/artifactory/generic/project/staging/",
-			expectedPath:    "generic-local/bazel.exe;test=value", // Should preserve github.com structure but URL reconstruction makes it generic
-			description:     "Should strip staging prefix but preserve github.com path structure",
+			expectedPath:    "generic-local/some-domain.com/path/bazel.exe;test=value", // Should preserve domain structure after stripping
+			description:     "Should strip staging prefix but preserve domain path structure",
 		},
 		{
 			name:            "Complex path stripping with GitHub releases",
@@ -715,8 +715,15 @@ func TestJFrogDestination_SourcePathStripping_BugFix(t *testing.T) {
 			name:            "Generic URL stripping",
 			sourceURL:       "https://artifactory.corp.net/staging/some-host.com/path/to/file.zip",
 			sourcePathStrip: "artifactory.corp.net/staging/",
-			expectedPath:    "generic-local/file.zip;test=value", // Generic processor just uses filename
-			description:     "Should strip prefix from generic URLs",
+			expectedPath:    "generic-local/some-host.com/path/to/file.zip;test=value", // Generic processor preserves structure
+			description:     "Should strip prefix from generic URLs but preserve remaining structure",
+		},
+		{
+			name:            "BCR URL preserves structure",
+			sourceURL:       "https://bcr.bazel.build/modules/hermetic_cc_toolchain/4.0.0/source.json",
+			sourcePathStrip: "",
+			expectedPath:    "generic-local/bcr.bazel.build/modules/hermetic_cc_toolchain/4.0.0/source.json;test=value", // BCR URLs should preserve full structure
+			description:     "BCR URLs should preserve full path structure as reported in the original bug",
 		},
 	}
 

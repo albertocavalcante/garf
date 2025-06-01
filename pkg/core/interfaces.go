@@ -20,13 +20,18 @@ type Source interface {
 
 // Destination represents a location where artifacts can be stored.
 type Destination interface {
-	// Put stores an artifact in the destination
+	// Put stores an artifact in the destination and returns the destination path
 	// If raw is true, keeps the original URL structure
-	Put(ctx context.Context, artifact *Artifact, content io.Reader, raw bool) error
+	// Returns the final destination path/URL where the artifact was stored
+	Put(ctx context.Context, artifact *Artifact, content io.Reader, raw bool) (string, error)
 
 	// Exists checks if an artifact already exists in the destination
 	// If raw is true, keeps the original URL structure
 	Exists(ctx context.Context, artifact *Artifact, raw bool) (bool, error)
+
+	// BuildDestinationPath builds the destination path without uploading
+	// This is useful for dry-run mode to show where the artifact would be uploaded
+	BuildDestinationPath(artifact *Artifact, raw bool) (string, error)
 
 	// Validate checks if the destination configuration is valid
 	Validate() error

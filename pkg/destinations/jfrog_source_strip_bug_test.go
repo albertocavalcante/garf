@@ -57,8 +57,16 @@ func TestJFrogDestination_SourcePathStrippingBugFix(t *testing.T) {
 			sourceURL:       "https://artifactory.corp.net/staging/some-host.com/path/to/file.zip",
 			sourcePathStrip: "artifactory.corp.net/staging/",
 			destPath:        "generic-local",
-			expectedPath:    "/generic-local/file.zip",
-			description:     "Generic URLs should still work with stripping",
+			expectedPath:    "/generic-local/some-host.com/path/to/file.zip",
+			description:     "Generic URLs should preserve structure after stripping",
+		},
+		{
+			name:            "BCR URL without stripping (original bug scenario)",
+			sourceURL:       "https://bcr.bazel.build/modules/hermetic_cc_toolchain/4.0.0/source.json",
+			sourcePathStrip: "",
+			destPath:        "staging",
+			expectedPath:    "/staging/bcr.bazel.build/modules/hermetic_cc_toolchain/4.0.0/source.json",
+			description:     "BCR URLs should preserve full structure when no stripping is applied (this was the original bug)",
 		},
 	}
 
@@ -95,6 +103,8 @@ func TestJFrogDestination_SourcePathStrippingBugFix(t *testing.T) {
 				artifactName = "binary.zip"
 			} else if tt.name == "Generic URL with stripping" {
 				artifactName = "file.zip"
+			} else if tt.name == "BCR URL without stripping (original bug scenario)" {
+				artifactName = "source.json"
 			}
 
 			artifact := &core.Artifact{
@@ -106,7 +116,7 @@ func TestJFrogDestination_SourcePathStrippingBugFix(t *testing.T) {
 			}
 
 			// Perform the upload (this triggers the path building logic)
-			err := dest.Put(context.Background(), artifact, strings.NewReader("test content"), false)
+			destinationPath, err := dest.Put(context.Background(), artifact, strings.NewReader("test content"), false)
 			require.NoError(t, err, tt.description)
 
 			// Verify the path is correct
@@ -119,6 +129,9 @@ func TestJFrogDestination_SourcePathStrippingBugFix(t *testing.T) {
 			t.Logf("   Dest path: %s", tt.destPath)
 			t.Logf("   Expected path: %s", tt.expectedPath)
 			t.Logf("   Actual path: %s", requestPath)
+
+			// Log the destination path for debugging
+			t.Logf("Destination path returned: %s", destinationPath)
 		})
 	}
 }
