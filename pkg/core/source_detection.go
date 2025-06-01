@@ -10,6 +10,7 @@ import (
 func DetectSourceType(sourceURL, sourcePathStrip string) string {
 	// If source path strip is provided, apply it first to get the actual source URL
 	urlToCheck := sourceURL
+
 	if sourcePathStrip != "" {
 		// Strip the prefix if it exists in the URL
 		if strings.Contains(sourceURL, sourcePathStrip) {

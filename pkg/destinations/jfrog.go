@@ -10,10 +10,17 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/albertocavalcante/garf/pkg/core"
 	"github.com/albertocavalcante/garf/pkg/urlprocessor"
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	// httpClientTimeout is the default timeout for HTTP requests to JFrog Artifactory.
+	httpClientTimeout = 30 * time.Second
 )
 
 // JFrogConfig contains the configuration for connecting to JFrog Artifactory.
@@ -32,71 +39,133 @@ type JFrogConfig struct {
 
 // JFrogDestination implements the core.Destination interface for JFrog Artifactory.
 type JFrogDestination struct {
-	config      JFrogConfig
-	client      *http.Client
-	logger      *logrus.Logger
-	pathBuilder *urlprocessor.PathBuilder
+	config       JFrogConfig
+	logger       *logrus.Logger
+	urlProcessor *urlprocessor.PathBuilder
+	httpClient   *http.Client
+	baseURL      *url.URL
+
+	// Thread-safety fields for lazy initialization
+	clientOnce sync.Once
+	urlOnce    sync.Once
+	urlErr     error
 }
+
+// Ensure JFrogDestination implements the Destination interface.
+var _ core.Destination = (*JFrogDestination)(nil)
 
 // NewJFrogDestination creates a new JFrogDestination with the provided configuration.
 func NewJFrogDestination(config JFrogConfig, logger *logrus.Logger) *JFrogDestination {
 	return &JFrogDestination{
-		config:      config,
-		client:      &http.Client{},
-		logger:      logger,
-		pathBuilder: urlprocessor.NewWithLogger(logger),
+		config:       config,
+		logger:       logger,
+		urlProcessor: urlprocessor.NewWithLogger(logger),
 	}
 }
 
 // BuildTargetURL constructs the full URL for an artifact in JFrog Artifactory.
 // It includes the base URL, destination path, and matrix parameters for metadata.
 func (d *JFrogDestination) BuildTargetURL(artifact *core.Artifact, raw bool) (*url.URL, error) {
-	logger := d.logger.WithFields(logrus.Fields{
-		"artifact_name":     artifact.Name,
-		"artifact_location": artifact.Location,
-		"raw_mode":          raw,
-		"base_url":          d.config.URL,
-		"dest_path":         d.config.DestPath,
-	})
-
-	logger.Debug("Building target URL for JFrog upload")
-
-	// Parse the base JFrog URL
-	targetURL, err := url.Parse(d.config.URL)
-	if err != nil {
-		logger.WithError(err).Error("Failed to parse base JFrog URL")
-
-		return nil, fmt.Errorf("invalid JFrog URL: %w", err)
-	}
-
-	logger.WithField("parsed_base_url", targetURL.String()).Debug("Parsed base JFrog URL")
-
-	// Build the artifact path
-	artifactPath, err := d.buildArtifactPath(artifact, targetURL, raw)
-	if err != nil {
-		logger.WithError(err).Error("Failed to build artifact path")
-
+	if err := d.validateForURLBuilding(); err != nil {
 		return nil, err
 	}
 
-	logger.WithField("artifact_path", artifactPath).Debug("Built artifact path")
+	structuredPath, err := d.buildStructuredPath(artifact, raw)
+	if err != nil {
+		return nil, err
+	}
 
-	targetURL.Path = artifactPath
+	return d.buildFullURL(structuredPath, artifact.Metadata)
+}
 
-	// Add matrix parameters for metadata
-	if len(artifact.Metadata) > 0 {
-		matrixPath := artifactPath + d.buildMatrixParams(artifact.Metadata)
-		targetURL.Path = matrixPath
-		targetURL.RawPath = matrixPath
-		logger.WithFields(logrus.Fields{
-			"metadata":    artifact.Metadata,
-			"matrix_path": matrixPath,
+// BuildDestinationPath calculates the destination path for an artifact without performing an upload.
+// This is used for dry-run scenarios to predict the final location.
+// The returned path is the path component of the full target URL.
+func (d *JFrogDestination) BuildDestinationPath(artifact *core.Artifact, raw bool) (string, error) {
+	structuredPath, err := d.buildStructuredPath(artifact, raw)
+	if err != nil {
+		return "", err
+	}
+
+	// The destination path is DestPath joined with the processed structured path.
+	finalDestPath := path.Join(d.config.DestPath, structuredPath)
+
+	// Ensure leading slash
+	if !strings.HasPrefix(finalDestPath, "/") {
+		finalDestPath = "/" + finalDestPath
+	}
+
+	d.logger.WithField("final_dest_path", finalDestPath).Info("Calculated final destination path")
+
+	return finalDestPath, nil
+}
+
+// validateForURLBuilding performs common validation needed for URL building operations.
+func (d *JFrogDestination) validateForURLBuilding() error {
+	_, err := d.getBaseURL()
+
+	return err
+}
+
+// buildStructuredPath creates the structured path component for an artifact.
+func (d *JFrogDestination) buildStructuredPath(artifact *core.Artifact, raw bool) (string, error) {
+	dLogger := d.logger.WithFields(logrus.Fields{
+		"artifact_name":     artifact.Name,
+		"artifact_location": artifact.Location,
+		"raw_mode":          raw,
+		"dest_path":         d.config.DestPath,
+		"source_path_strip": d.config.SourcePathStrip,
+	})
+	dLogger.Debug("Building structured path for artifact")
+
+	if artifact.Location == "" {
+		return "", fmt.Errorf("artifact location cannot be empty")
+	}
+
+	sourceURL, err := url.Parse(artifact.Location)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse artifact location URL %s: %w", artifact.Location, err)
+	}
+
+	return d.urlProcessor.BuildStructuredPath(
+		sourceURL,
+		artifact.Name,
+		d.config.SourcePathStrip,
+		raw,
+	)
+}
+
+// buildFullURL constructs the complete URL including base URL, path, and matrix parameters.
+func (d *JFrogDestination) buildFullURL(structuredPath string, metadata map[string]string) (*url.URL, error) {
+	baseURL, err := d.getBaseURL()
+	if err != nil {
+		return nil, err
+	}
+
+	// finalPath is the full path component including the destination repository.
+	finalPath := path.Join(d.config.DestPath, structuredPath)
+
+	// Ensure the path starts with a slash as it's a URL path component
+	if !strings.HasPrefix(finalPath, "/") {
+		finalPath = "/" + finalPath
+	}
+
+	// Make a copy of baseURL to avoid modifying the original shared instance's Path
+	targetURL := *baseURL // Shallow copy is fine as we only modify Path/RawPath
+	targetURL.Path = finalPath
+
+	if len(metadata) > 0 {
+		matrixParams := d.buildMatrixParams(metadata)
+		targetURL.Path = finalPath + matrixParams
+		d.logger.WithFields(logrus.Fields{
+			"metadata":    metadata,
+			"matrix_path": targetURL.Path,
 		}).Debug("Added matrix parameters to URL")
 	}
 
-	logger.WithField("final_url", targetURL.String()).Info("Built final target URL for JFrog upload")
+	d.logger.WithField("final_url", targetURL.String()).Info("Built final target URL for JFrog upload")
 
-	return targetURL, nil
+	return &targetURL, nil
 }
 
 // buildMatrixParams converts metadata to JFrog matrix parameters.
@@ -122,276 +191,103 @@ func (d *JFrogDestination) buildMatrixParams(metadata map[string]string) string 
 	return ";" + strings.Join(params, ";")
 }
 
-// buildArtifactPath constructs the storage path for the artifact.
-func (d *JFrogDestination) buildArtifactPath(artifact *core.Artifact, targetURL *url.URL, raw bool) (string, error) {
-	logger := d.logger.WithFields(logrus.Fields{
-		"artifact_location": artifact.Location,
-		"artifact_name":     artifact.Name,
-		"raw_mode":          raw,
-		"source_path_strip": d.config.SourcePathStrip,
-	})
-
-	if artifact.Location == "" {
-		artifactPath := path.Join(targetURL.Path, d.config.DestPath, artifact.Name)
-		logger.WithField("artifact_path", artifactPath).Debug("Built simple artifact path (no location)")
-
-		return artifactPath, nil
-	}
-
-	sourceURL, err := url.Parse(artifact.Location)
-	if err != nil {
-		logger.WithError(err).Error("Failed to parse artifact location URL")
-
-		return "", fmt.Errorf("invalid source location: %w", err)
-	}
-
-	logger.WithField("parsed_source_url", sourceURL.String()).Debug("Parsed source URL")
-
-	// Apply source path stripping if configured
-	processedURL := sourceURL
-	if d.config.SourcePathStrip != "" {
-		processedURL, err = d.stripSourcePath(sourceURL)
-		if err != nil {
-			logger.WithError(err).Error("Failed to strip source path")
-			return "", err
-		}
-		logger.WithFields(logrus.Fields{
-			"original_url":  sourceURL.String(),
-			"processed_url": processedURL.String(),
-		}).Debug("Applied source path stripping")
-	}
-
-	// Get the structured path from our path builder
-	structuredPath := d.pathBuilder.ProcessURL(processedURL, raw)
-	logger.WithField("structured_path", structuredPath).Debug("Generated structured path from URL processor")
-
-	// Replace the filename in the structured path with the artifact name
-	// This is important for cases like ZIP extraction where the artifact name
-	// might be different from the filename in the URL
-	structuredDir := path.Dir(structuredPath)
-	if structuredDir == "." {
-		// If there's no directory structure, just use the artifact name
-		structuredPath = artifact.Name
-	} else {
-		// Replace the filename with the artifact name
-		structuredPath = path.Join(structuredDir, artifact.Name)
-	}
-
-	logger.WithField("final_structured_path", structuredPath).Debug("Updated structured path with artifact name")
-
-	artifactPath := path.Join(targetURL.Path, d.config.DestPath, structuredPath)
-	logger.WithField("final_artifact_path", artifactPath).Debug("Built final artifact path")
-
-	return artifactPath, nil
-}
-
-// stripSourcePath removes the configured source path prefix from the URL.
-// This is useful for JFrog-to-JFrog mirroring where you want to remove the source
-// repository path before processing the URL structure.
-func (d *JFrogDestination) stripSourcePath(sourceURL *url.URL) (*url.URL, error) {
-	stripPrefix := strings.TrimSuffix(d.config.SourcePathStrip, "/")
-	if stripPrefix == "" {
-		return sourceURL, nil
-	}
-
-	logger := d.logger.WithFields(logrus.Fields{
-		"source_url":   sourceURL.String(),
-		"strip_prefix": stripPrefix,
-	})
-
-	// Get the full URL string for processing
-	fullURL := sourceURL.String()
-
-	// Check if the URL contains the prefix to strip
-	if !strings.Contains(fullURL, stripPrefix) {
-		logger.Debug("Strip prefix not found in URL, returning original URL")
-		return sourceURL, nil
-	}
-
-	// Find the position after the strip prefix
-	idx := strings.Index(fullURL, stripPrefix)
-	if idx == -1 {
-		logger.Debug("Strip prefix not found in URL, returning original URL")
-		return sourceURL, nil
-	}
-
-	// Extract everything after the strip prefix
-	afterPrefix := fullURL[idx+len(stripPrefix):]
-	// Remove leading slash if present
-	afterPrefix = strings.TrimPrefix(afterPrefix, "/")
-
-	logger.WithField("after_prefix", afterPrefix).Debug("Extracted content after strip prefix")
-
-	// Try to reconstruct URL from the stripped content
-	if reconstructedURL := d.tryReconstructURL(afterPrefix, logger, "stripped content"); reconstructedURL != nil {
-		logger.WithFields(logrus.Fields{
-			"original_url":      sourceURL.String(),
-			"reconstructed_url": reconstructedURL.String(),
-		}).Debug("Successfully reconstructed URL after stripping")
-		return reconstructedURL, nil
-	}
-
-	// If reconstruction failed, create a new URL with the stripped path
-	// Preserve the original scheme and host, but use the stripped path
-	processedURL := *sourceURL
-	processedURL.Path = "/" + afterPrefix
-
-	logger.WithFields(logrus.Fields{
-		"original_url":  sourceURL.String(),
-		"processed_url": processedURL.String(),
-	}).Debug("Created processed URL with stripped path")
-
-	return &processedURL, nil
-}
-
-// tryReconstructURL attempts to reconstruct a URL from the stripped content.
-// It handles common patterns like domain.com/path and github.com/path.
-// Returns nil if reconstruction is not possible or fails.
-func (d *JFrogDestination) tryReconstructURL(afterPrefix string, logger *logrus.Entry, context string) *url.URL {
-	// If the stripped content looks like a URL path starting with a domain,
-	// try to reconstruct it as a proper URL
-	if strings.Contains(afterPrefix, "/") && strings.Contains(strings.Split(afterPrefix, "/")[0], ".") {
-		// This looks like domain.com/path, reconstruct as https://domain.com/path
-		reconstructedURL, err := url.Parse("https://" + afterPrefix)
-		if err == nil {
-			logger.WithFields(logrus.Fields{
-				"reconstructed_url": reconstructedURL.String(),
-				"context":           context,
-			}).Debug("Reconstructed URL from domain pattern")
-			return reconstructedURL
-		}
-	}
-
-	// Check if the stripped content contains github.com in the path
-	if strings.Contains(afterPrefix, "github.com/") {
-		// Find github.com and reconstruct from there
-		if idx := strings.Index(afterPrefix, "github.com/"); idx != -1 {
-			githubPath := afterPrefix[idx:]
-			reconstructedURL, err := url.Parse("https://" + githubPath)
-			if err == nil {
-				logger.WithFields(logrus.Fields{
-					"reconstructed_url": reconstructedURL.String(),
-					"context":           context,
-				}).Debug("Reconstructed GitHub URL")
-				return reconstructedURL
-			}
-		}
-	}
-
-	return nil
-}
-
 // Put uploads an artifact to JFrog Artifactory.
 func (d *JFrogDestination) Put(ctx context.Context, artifact *core.Artifact, content io.Reader, raw bool) (string, error) {
-	logger := d.logger.WithFields(logrus.Fields{
+	dLogger := d.logger.WithFields(logrus.Fields{
 		"name":     artifact.Name,
 		"version":  artifact.Version,
 		"location": artifact.Location,
 		"raw_mode": raw,
 	})
+	dLogger.Info("Starting JFrog artifact upload")
 
-	logger.Info("Starting JFrog artifact upload")
-
-	if artifact.Location == "" {
-		logger.Error("Artifact location cannot be empty")
-
-		return "", fmt.Errorf("artifact location cannot be empty")
-	}
-
-	// Build the target URL
 	targetURL, err := d.BuildTargetURL(artifact, raw)
 	if err != nil {
-		logger.WithError(err).Error("Failed to build target URL")
-
-		return "", err
+		return "", err // Error already logged by BuildTargetURL
 	}
 
-	logger.WithField("target_url", targetURL.String()).Info("Built target URL for upload")
-
-	// Create and send request
 	req, err := d.createRequest(ctx, targetURL, content)
 	if err != nil {
-		logger.WithError(err).Error("Failed to create HTTP request")
-
-		return "", err
+		return "", err // Error already logged by createRequest
 	}
 
-	logger.WithFields(logrus.Fields{
-		"method":       req.Method,
-		"url":          req.URL.String(),
-		"content_type": req.Header.Get("Content-Type"),
-	}).Info("Sending HTTP request to JFrog")
+	dLogger.Info("Sending HTTP request to JFrog")
 
-	resp, err := d.client.Do(req)
+	resp, err := d.getHTTPClient().Do(req)
 	if err != nil {
-		logger.WithError(err).Error("Failed to send HTTP request to JFrog")
+		dLogger.WithError(err).Error("Failed to send HTTP request to JFrog")
 
-		return "", fmt.Errorf("failed to upload artifact: %w", err)
+		return "", fmt.Errorf("failed to send HTTP request: %w", err)
 	}
+
 	defer resp.Body.Close()
 
-	logger.WithFields(logrus.Fields{
-		"status_code":    resp.StatusCode,
-		"content_type":   resp.Header.Get("Content-Type"),
-		"content_length": resp.Header.Get("Content-Length"),
-	}).Info("Received response from JFrog")
-
-	// Handle response
 	if err := d.handleResponse(resp); err != nil {
-		logger.WithError(err).Error("JFrog upload failed")
-
-		return "", err
+		return "", err // Error already logged by handleResponse
 	}
 
-	logger.WithField("destination_url", targetURL.String()).Info("Successfully uploaded artifact to JFrog")
+	dLogger.WithField("destination_url", targetURL.String()).Info("Successfully uploaded artifact to JFrog")
 
 	return targetURL.String(), nil
 }
 
 // Exists checks if an artifact already exists in JFrog Artifactory.
 func (d *JFrogDestination) Exists(ctx context.Context, artifact *core.Artifact, raw bool) (bool, error) {
-	logger := d.logger.WithFields(logrus.Fields{
+	dLogger := d.logger.WithFields(logrus.Fields{
 		"name":     artifact.Name,
 		"version":  artifact.Version,
 		"location": artifact.Location,
+		"raw_mode": raw,
 	})
+	dLogger.Debug("Checking artifact existence")
 
 	if artifact.Location == "" {
-		logger.Error("Artifact location cannot be empty")
-
 		return false, fmt.Errorf("artifact location cannot be empty")
 	}
 
-	// Build the target URL
 	targetURL, err := d.BuildTargetURL(artifact, raw)
 	if err != nil {
-		logger.WithError(err).Error("Failed to build target URL")
-
 		return false, err
 	}
 
-	// Create and send HEAD request
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, targetURL.String(), nil)
 	if err != nil {
-		logger.WithError(err).Error("Failed to create request")
-
-		return false, fmt.Errorf("failed to create request: %w", err)
+		return false, fmt.Errorf("failed to create HEAD request: %w", err)
 	}
 
 	req.SetBasicAuth(d.config.User, d.config.Password)
 
-	resp, err := d.client.Do(req)
+	resp, err := d.getHTTPClient().Do(req)
 	if err != nil {
-		logger.WithError(err).Error("Failed to check artifact existence")
-
-		return false, fmt.Errorf("failed to check artifact existence: %w", err)
+		return false, fmt.Errorf("failed to execute HEAD request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	exists := resp.StatusCode == http.StatusOK
-	logger.WithField("exists", exists).Info("Checked artifact existence")
+	if resp.StatusCode == http.StatusOK {
+		dLogger.Info("Artifact exists")
 
-	return exists, nil
+		return true, nil
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		dLogger.Info("Artifact does not exist")
+
+		return false, nil
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		dLogger.WithError(err).Error("Failed to read response body")
+
+		return false, fmt.Errorf("unexpected status code %d from Artifactory while checking existence: could not read response body: %w", resp.StatusCode, err)
+	}
+
+	dLogger.WithFields(logrus.Fields{
+		"status_code": resp.StatusCode,
+		"response":    string(bodyBytes),
+	}).Error("Received unexpected status code while checking artifact existence")
+
+	return false, fmt.Errorf("unexpected status code %d from Artifactory while checking existence: %s", resp.StatusCode, string(bodyBytes))
 }
 
 // createRequest creates an HTTP request with authentication and headers.
@@ -430,7 +326,12 @@ func (d *JFrogDestination) handleResponse(resp *http.Response) error {
 	}).Debug("Processing JFrog response")
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			d.logger.WithError(err).Error("Failed to read response body")
+
+			return fmt.Errorf("failed to upload artifact: HTTP %d - could not read response body: %w", resp.StatusCode, err)
+		}
 
 		d.logger.WithFields(logrus.Fields{
 			"status_code":   resp.StatusCode,
@@ -481,33 +382,29 @@ func (d *JFrogDestination) GetConfig() JFrogConfig {
 	return d.config
 }
 
-// BuildDestinationPath builds the destination path without uploading.
-// This is useful for dry-run mode to show where the artifact would be uploaded.
-func (d *JFrogDestination) BuildDestinationPath(artifact *core.Artifact, raw bool) (string, error) {
-	logger := d.logger.WithFields(logrus.Fields{
-		"name":     artifact.Name,
-		"version":  artifact.Version,
-		"location": artifact.Location,
-		"raw_mode": raw,
+// getHTTPClient returns the HTTP client, creating it lazily if needed.
+func (d *JFrogDestination) getHTTPClient() *http.Client {
+	d.clientOnce.Do(func() {
+		d.httpClient = &http.Client{
+			Timeout: httpClientTimeout,
+		}
 	})
 
-	logger.Debug("Building destination path for artifact")
+	return d.httpClient
+}
 
-	if artifact.Location == "" {
-		logger.Error("Artifact location cannot be empty")
-		return "", fmt.Errorf("artifact location cannot be empty")
-	}
+// getBaseURL returns the parsed base URL, parsing it lazily if needed.
+func (d *JFrogDestination) getBaseURL() (*url.URL, error) {
+	d.urlOnce.Do(func() {
+		parsedURL, err := url.Parse(d.config.URL)
+		if err != nil {
+			d.urlErr = fmt.Errorf("invalid JFrog URL %q: %w", d.config.URL, err)
 
-	// Build the target URL
-	targetURL, err := d.BuildTargetURL(artifact, raw)
-	if err != nil {
-		logger.WithError(err).Error("Failed to build target URL")
-		return "", err
-	}
+			return
+		}
 
-	// Return the full destination URL
-	destinationPath := targetURL.String()
-	logger.WithField("destination_path", destinationPath).Debug("Built destination path")
+		d.baseURL = parsedURL
+	})
 
-	return destinationPath, nil
+	return d.baseURL, d.urlErr
 }

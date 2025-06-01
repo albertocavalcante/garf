@@ -60,6 +60,7 @@ func (s *GitHubSource) Get(ctx context.Context, artifact *core.Artifact) (io.Rea
 
 	if err := core.ValidateGitHubURL(artifact.Location); err != nil {
 		logger.WithError(err).Error("Invalid GitHub URL")
+
 		return nil, err
 	}
 
@@ -67,6 +68,7 @@ func (s *GitHubSource) Get(ctx context.Context, artifact *core.Artifact) (io.Rea
 
 	if err := s.EnsureTempDir(); err != nil {
 		logger.WithError(err).Error("Failed to create temporary directory")
+
 		return nil, err
 	}
 
@@ -75,12 +77,14 @@ func (s *GitHubSource) Get(ctx context.Context, artifact *core.Artifact) (io.Rea
 	req, err := createGitHubRequest(ctx, artifact.Location)
 	if err != nil {
 		logger.WithError(err).Error("Failed to create HTTP request")
+
 		return nil, err
 	}
 
 	resp, err := s.DoRequest(req)
 	if err != nil {
 		logger.WithError(err).Error("Failed to download artifact from GitHub")
+
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -88,6 +92,7 @@ func (s *GitHubSource) Get(ctx context.Context, artifact *core.Artifact) (io.Rea
 	reader, err := s.DownloadToTempFile(resp)
 	if err != nil {
 		logger.WithError(err).Error("Failed to save artifact to temporary file")
+
 		return nil, err
 	}
 

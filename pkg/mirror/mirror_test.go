@@ -60,6 +60,7 @@ func (d *mockDestination) Validate() error {
 func (d *mockDestination) BuildDestinationPath(artifact *core.Artifact, raw bool) (string, error) {
 	// Simulate a destination path
 	destinationPath := fmt.Sprintf("mock-repo/%s", artifact.Name)
+
 	return destinationPath, nil
 }
 

@@ -36,6 +36,7 @@ func NewHTTPSource(logger *logrus.Logger, prefix string) *HTTPSource {
 func (s *HTTPSource) EnsureTempDir() error {
 	if s.tempDir != "" {
 		s.logger.WithField("temp_dir", s.tempDir).Debug("Using existing temporary directory")
+
 		return nil
 	}
 
@@ -66,6 +67,7 @@ func (s *HTTPSource) DownloadToTempFile(resp *http.Response) (io.ReadCloser, err
 	if err != nil {
 		tempFile.Close()
 		os.Remove(tempFile.Name())
+
 		return nil, fmt.Errorf("failed to save artifact: %w", err)
 	}
 
@@ -77,6 +79,7 @@ func (s *HTTPSource) DownloadToTempFile(resp *http.Response) (io.ReadCloser, err
 	if _, err := tempFile.Seek(0, 0); err != nil {
 		tempFile.Close()
 		os.Remove(tempFile.Name())
+
 		return nil, fmt.Errorf("failed to seek file: %w", err)
 	}
 
@@ -111,6 +114,7 @@ func (s *HTTPSource) DoRequest(req *http.Request) (*http.Response, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
+
 		return nil, fmt.Errorf("failed to download artifact: HTTP %d", resp.StatusCode)
 	}
 
@@ -123,8 +127,10 @@ func (s *HTTPSource) Close() error {
 		if err := os.RemoveAll(s.tempDir); err != nil {
 			return fmt.Errorf("failed to clean up temporary directory: %w", err)
 		}
+
 		s.tempDir = ""
 	}
+
 	return nil
 }
 
@@ -147,6 +153,7 @@ type cleanupReadCloser struct {
 func (c *cleanupReadCloser) Close() error {
 	err := c.ReadCloser.Close()
 	c.cleanup()
+
 	return err
 }
 
@@ -162,5 +169,6 @@ func CreateHTTPRequest(ctx context.Context, location string) (*http.Request, err
 	}
 
 	req.Header.Set("Accept", "application/octet-stream")
+
 	return req, nil
 }

@@ -222,16 +222,20 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 
 	// Get or create destination with proper locking
 	c.mu.Lock()
+
 	dest, exists := c.destinations[destKey]
 	if !exists {
 		// Create new destination
 		var err error
+
 		dest, err = c.createDestination(request.Destination, request.SourcePathStrip)
 		if err != nil {
 			c.mu.Unlock()
 			logger.WithError(err).Error("Failed to create destination")
+
 			return nil, fmt.Errorf("failed to create destination: %w", err)
 		}
+
 		c.destinations[destKey] = dest
 	}
 	c.mu.Unlock()
@@ -244,6 +248,7 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 			delete(c.destinations, destKey)
 			c.mu.Unlock()
 			logger.WithError(err).Error("Failed to register destination with mirror")
+
 			return nil, fmt.Errorf("failed to add destination: %w", err)
 		}
 	}
@@ -379,6 +384,7 @@ func ExtractArtifactName(urlStr string) string {
 func (c *Client) GetCachedDestinationsCount() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+
 	return len(c.destinations)
 }
 
@@ -387,6 +393,7 @@ func (c *Client) IsCachedDestination(key string) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	_, exists := c.destinations[key]
+
 	return exists
 }
 
