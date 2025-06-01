@@ -441,32 +441,57 @@ func TestJFrogDestinationExists(t *testing.T) {
 }
 
 func TestJFrogDestinationArtifactNameInPath(t *testing.T) {
-	env := setupTestEnv(t)
-	env.setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+	logger := destinations.NewTestLogger()
+	baseConfig := destinations.DefaultJFrogConfig()
+	baseConfig.DestPath = "my-repo"
+
+	var requestPath string
+	serverEnv := destinations.SetupTestServer(t, baseConfig, func(w http.ResponseWriter, r *http.Request) {
+		requestPath = r.URL.Path // Capture path for assertion
 		w.WriteHeader(http.StatusCreated)
 	})
-	defer env.cleanup()
+	defer serverEnv.Server.Close()
 
-	// Test case where artifact name differs from URL filename
-	// This simulates the preserve-zip-name scenario
-	artifact := &core.Artifact{
-		Name:     "bazel_nojdk-8.2.1-windows-x86_64.exe", // Different from URL filename
-		Version:  "8.2.1",
-		Location: "https://github.com/bazelbuild/bazel/releases/download/8.2.1/bazel_nojdk-8.2.1-windows-x86_64.zip",
-		Metadata: map[string]string{
-			"type": "binary",
+	dest := destinations.NewJFrogDestination(serverEnv.Config, logger)
+
+	tests := []struct {
+		name             string
+		artifactName     string
+		artifactLocation string
+		expectedPathFrag string // Expected server request path (r.URL.Path, which is decoded)
+	}{
+		{
+			name:             "standard artifact name",
+			artifactName:     "my-app-1.0.linux.tar.gz",
+			artifactLocation: "https://storage.googleapis.com/my-bucket/my-app-1.0.linux.tar.gz",
+			expectedPathFrag: "/my-repo/storage.googleapis.com/my-bucket/my-app-1.0.linux.tar.gz",
+		},
+		{
+			name:             "artifact name with spaces",
+			artifactName:     "my app 1.0.dmg",
+			artifactLocation: "https://files.example.org/dist/my app 1.0.dmg",  // Source may have space or be encoded, matters less for this test's focus
+			expectedPathFrag: "/my-repo/files.example.org/dist/my app 1.0.dmg", // r.URL.Path is decoded, so expect space
+		},
+		{
+			name:             "github url, artifact name differs from path",
+			artifactName:     "renamed-tool-v2.1.zip",
+			artifactLocation: "https://github.com/user/gh-project/releases/download/v2.1/gh-tool-v2.1.zip",
+			expectedPathFrag: "/my-repo/github.com/user/gh-project/v2.1/renamed-tool-v2.1.zip",
 		},
 	}
 
-	dest := destinations.NewJFrogDestination(env.config, env.logger)
-	_, err := dest.Put(context.Background(), artifact, strings.NewReader("test content"), false)
-	require.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			artifact := destinations.DefaultArtifact(t, tt.artifactName, tt.artifactLocation, nil)
+			_, err := dest.Put(context.Background(), artifact, strings.NewReader("content"), false)
+			require.NoError(t, err)
 
-	// Verify that the path contains the artifact name (.exe) not the URL filename (.zip)
-	require.Contains(t, env.lastPath, "bazel_nojdk-8.2.1-windows-x86_64.exe")
-	require.NotContains(t, env.lastPath, "bazel_nojdk-8.2.1-windows-x86_64.zip")
-	require.Contains(t, env.lastPath, "/generic-local/github.com/bazelbuild/bazel/8.2.1/bazel_nojdk-8.2.1-windows-x86_64.exe")
-	require.Contains(t, env.lastPath, "type=binary")
+			// The requestPath captured by the server should not have matrix parameters.
+			// It should be the pure path component before semicolons.
+			pathWithoutMatrixParams := strings.Split(requestPath, ";")[0]
+			require.Equal(t, tt.expectedPathFrag, pathWithoutMatrixParams)
+		})
+	}
 }
 
 // sourcePathStripTestCase defines a test case for source path stripping.
