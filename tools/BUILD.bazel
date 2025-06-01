@@ -1,4 +1,5 @@
 """Build file for tools configuration."""
+
 load("@bazel_env.bzl", "bazel_env")
 
 bazel_env(
