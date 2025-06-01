@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3](https://github.com/albertocavalcante/garf/compare/v0.5.2...v0.5.3) (2025-06-01)
+
+
+### Bug Fixes
+
+* **mirror:** improve logging and catch bugs for preserving url paths when the source strip content is empty ([#117](https://github.com/albertocavalcante/garf/issues/117)) ([9940673](https://github.com/albertocavalcante/garf/commit/99406733c510087f1feb6cc69ce8ebaa054b6d69))
+
 ## [0.5.2](https://github.com/albertocavalcante/garf/compare/v0.5.1...v0.5.2) (2025-05-28)
 
 
