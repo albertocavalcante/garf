@@ -122,11 +122,14 @@ func (p *PathBuilder) StripPrefixFromURL(u *url.URL, prefix string) (*url.URL, e
 		if altResult := p.tryAlternativeStripping(u, prefix, baseString); altResult != nil {
 			return altResult, nil
 		}
+
 		p.logStrippingFailure(u, prefix, baseString)
+
 		return u, nil // Return original URL
 	}
 
 	p.logSuccessfulStripping(baseString, prefix, strippedSegment)
+
 	return p.parseStrippedSegment(strippedSegment)
 }
 
@@ -139,6 +142,7 @@ func (p *PathBuilder) BuildStructuredPath(sourceURL *url.URL, artifactName, sour
 		if err != nil {
 			return "", err
 		}
+
 		processedURL = strippedURL
 	}
 
@@ -156,32 +160,39 @@ func (p *PathBuilder) BuildStructuredPath(sourceURL *url.URL, artifactName, sour
 
 // determineBaseForStripping decides whether to strip from Host+Path or Path only.
 func (p *PathBuilder) determineBaseForStripping(u *url.URL, prefix string) string {
-	if strings.HasPrefix(prefix, u.Host) && u.Host != "" {
+	if u.Host != "" && strings.HasPrefix(prefix, u.Host) {
 		baseString := u.Host + u.Path
 		p.logger.Debugf("SourcePathStrip '%s' seems to include host '%s'. Stripping from Host+Path: '%s'", prefix, u.Host, baseString)
+
 		return baseString
 	}
 
 	baseString := strings.TrimPrefix(u.Path, "/")
 	p.logger.Debugf("SourcePathStrip '%s' does not seem to include host '%s'. Stripping from Path: '%s'", prefix, u.Host, baseString)
+
 	return baseString
 }
 
 // tryAlternativeStripping attempts alternative stripping strategies.
 func (p *PathBuilder) tryAlternativeStripping(u *url.URL, prefix, originalBase string) *url.URL {
-	// Only try Host+Path if we originally tried Path-only
-	if strings.HasPrefix(prefix, u.Host) && u.Host != "" {
+	// Only try Host+Path if we originally tried Path-only (i.e., prefix doesn't start with host)
+	if u.Host != "" && strings.HasPrefix(prefix, u.Host) {
 		return nil // Already tried Host+Path approach
 	}
 
 	altBase := u.Host + u.Path
 	altStripped := strings.TrimPrefix(altBase, prefix)
+
 	if altStripped != altBase {
 		p.logger.Debugf("Initial path-only strip failed. Successful strip from Host+Path: '%s' -> '%s'", altBase, altStripped)
+
 		if result, err := p.parseStrippedSegment(altStripped); err == nil {
 			return result
+		} else {
+			p.logger.Debugf("Failed to parse stripped segment '%s': %v", altStripped, err)
 		}
 	}
+
 	return nil
 }
 
@@ -208,32 +219,106 @@ func (p *PathBuilder) parseStrippedSegment(segment string) (*url.URL, error) {
 	return p.createPathOnlyURL(normalized, segment), nil
 }
 
-// detectGitHubURL checks if the segment contains GitHub content.
+// detectGitHubURL checks if the segment contains GitHub content using proper URL parsing.
 func (p *PathBuilder) detectGitHubURL(normalized, original string) *url.URL {
-	if idx := strings.Index(normalized, "github.com/"); idx != -1 {
-		githubSegment := normalized[idx:]
-		pathAfterHost := strings.TrimPrefix(githubSegment, "github.com")
-
-		githubURL := &url.URL{
-			Host: "github.com",
-			Path: pathAfterHost,
-		}
-		if !strings.HasPrefix(githubURL.Path, "/") && githubURL.Path != "" {
-			githubURL.Path = "/" + githubURL.Path
-		}
-
-		p.logger.Debugf("Stripped segment '%s' (normalized: '%s') identified as GitHub content. New URL: %s", original, normalized, githubURL.String())
+	// Try to parse as a potential URL to safely detect GitHub
+	if githubURL := p.tryParseAsGitHubURL(normalized, original); githubURL != nil {
 		return githubURL
 	}
+
+	// Fallback to string matching for edge cases
+	return p.detectGitHubURLViaStringMatching(normalized, original)
+}
+
+// tryParseAsGitHubURL attempts to parse the segment as a GitHub URL.
+func (p *PathBuilder) tryParseAsGitHubURL(normalized, original string) *url.URL {
+	testURL, err := url.Parse("https://" + normalized)
+	if err != nil {
+		return nil
+	}
+
+	if !p.isGitHubHost(testURL.Host) {
+		return nil
+	}
+
+	githubURL := &url.URL{
+		Host: testURL.Host,
+		Path: testURL.Path,
+	}
+	if !strings.HasPrefix(githubURL.Path, "/") && githubURL.Path != "" {
+		githubURL.Path = "/" + githubURL.Path
+	}
+
+	p.logger.Debugf("Stripped segment '%s' (normalized: '%s') identified as GitHub content. New URL: %s",
+		original, normalized, githubURL.String())
+
+	return githubURL
+}
+
+// isGitHubHost checks if the host is a GitHub domain.
+func (p *PathBuilder) isGitHubHost(host string) bool {
+	return host == "github.com" || strings.HasSuffix(host, ".github.com")
+}
+
+// detectGitHubURLViaStringMatching uses string matching as a fallback for GitHub detection.
+func (p *PathBuilder) detectGitHubURLViaStringMatching(normalized, original string) *url.URL {
+	githubHosts := []string{"github.com/", "api.github.com/", "raw.githubusercontent.com/"}
+
+	for _, host := range githubHosts {
+		if githubURL := p.tryMatchGitHubHost(normalized, original, host); githubURL != nil {
+			return githubURL
+		}
+	}
+
 	return nil
+}
+
+// tryMatchGitHubHost attempts to match a specific GitHub host in the normalized string.
+func (p *PathBuilder) tryMatchGitHubHost(normalized, original, host string) *url.URL {
+	idx := strings.Index(normalized, host)
+	if idx == -1 {
+		return nil
+	}
+
+	// Ensure this is actually a host, not part of a path
+	if !p.isValidHostPosition(normalized, idx) {
+		return nil
+	}
+
+	githubSegment := normalized[idx:]
+	hostPart := strings.TrimSuffix(host, "/")
+	pathAfterHost := strings.TrimPrefix(githubSegment, host)
+
+	githubURL := &url.URL{
+		Host: hostPart,
+		Path: "/" + pathAfterHost,
+	}
+
+	p.logger.Debugf("Stripped segment '%s' (normalized: '%s') identified as GitHub content via fallback. New URL: %s",
+		original, normalized, githubURL.String())
+
+	return githubURL
+}
+
+// isValidHostPosition checks if the found index represents a valid host position.
+func (p *PathBuilder) isValidHostPosition(normalized string, idx int) bool {
+	if idx == 0 {
+		return true
+	}
+
+	prevChar := normalized[idx-1]
+
+	return prevChar == '/' || prevChar == '.' || prevChar == ' '
 }
 
 // tryParseAbsolute attempts to parse the segment as an absolute URL.
 func (p *PathBuilder) tryParseAbsolute(normalized, original string) *url.URL {
 	if newU, err := url.Parse(normalized); err == nil && newU.IsAbs() {
 		p.logger.Debugf("Stripped segment '%s' (normalized: '%s') parsed as absolute URL: %s", original, normalized, newU.String())
+
 		return newU
 	}
+
 	return nil
 }
 
@@ -246,8 +331,10 @@ func (p *PathBuilder) tryParseWithHost(normalized, original string) *url.URL {
 		}
 		p.logger.Debugf("Stripped segment '%s' (normalized: '%s') parsed as host '%s' with path '%s'. Schemaless URL: %s",
 			original, normalized, schemalessURL.Host, schemalessURL.Path, schemalessURL.String())
+
 		return schemalessURL
 	}
+
 	return nil
 }
 
@@ -257,6 +344,7 @@ func (p *PathBuilder) createPathOnlyURL(normalized, original string) *url.URL {
 	finalURL := &url.URL{Path: newPath}
 	p.logger.Debugf("Stripped segment '%s' (normalized: '%s') treated as path-only. New URL: %s (Path: %s)",
 		original, normalized, finalURL.String(), finalURL.Path)
+
 	return finalURL
 }
 

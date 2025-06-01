@@ -10,11 +10,17 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/albertocavalcante/garf/pkg/core"
 	"github.com/albertocavalcante/garf/pkg/urlprocessor"
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	// httpClientTimeout is the default timeout for HTTP requests to JFrog Artifactory.
+	httpClientTimeout = 30 * time.Second
 )
 
 // JFrogConfig contains the configuration for connecting to JFrog Artifactory.
@@ -38,6 +44,11 @@ type JFrogDestination struct {
 	urlProcessor *urlprocessor.PathBuilder
 	httpClient   *http.Client
 	baseURL      *url.URL
+
+	// Thread-safety fields for lazy initialization
+	clientOnce sync.Once
+	urlOnce    sync.Once
+	urlErr     error
 }
 
 // Ensure JFrogDestination implements the Destination interface.
@@ -85,12 +96,14 @@ func (d *JFrogDestination) BuildDestinationPath(artifact *core.Artifact, raw boo
 	}
 
 	d.logger.WithField("final_dest_path", finalDestPath).Info("Calculated final destination path")
+
 	return finalDestPath, nil
 }
 
 // validateForURLBuilding performs common validation needed for URL building operations.
 func (d *JFrogDestination) validateForURLBuilding() error {
 	_, err := d.getBaseURL()
+
 	return err
 }
 
@@ -151,6 +164,7 @@ func (d *JFrogDestination) buildFullURL(structuredPath string, metadata map[stri
 	}
 
 	d.logger.WithField("final_url", targetURL.String()).Info("Built final target URL for JFrog upload")
+
 	return &targetURL, nil
 }
 
@@ -198,11 +212,14 @@ func (d *JFrogDestination) Put(ctx context.Context, artifact *core.Artifact, con
 	}
 
 	dLogger.Info("Sending HTTP request to JFrog")
+
 	resp, err := d.getHTTPClient().Do(req)
 	if err != nil {
 		dLogger.WithError(err).Error("Failed to send HTTP request to JFrog")
+
 		return "", fmt.Errorf("failed to send HTTP request: %w", err)
 	}
+
 	defer resp.Body.Close()
 
 	if err := d.handleResponse(resp); err != nil {
@@ -210,6 +227,7 @@ func (d *JFrogDestination) Put(ctx context.Context, artifact *core.Artifact, con
 	}
 
 	dLogger.WithField("destination_url", targetURL.String()).Info("Successfully uploaded artifact to JFrog")
+
 	return targetURL.String(), nil
 }
 
@@ -236,6 +254,7 @@ func (d *JFrogDestination) Exists(ctx context.Context, artifact *core.Artifact, 
 	if err != nil {
 		return false, fmt.Errorf("failed to create HEAD request: %w", err)
 	}
+
 	req.SetBasicAuth(d.config.User, d.config.Password)
 
 	resp, err := d.getHTTPClient().Do(req)
@@ -246,18 +265,28 @@ func (d *JFrogDestination) Exists(ctx context.Context, artifact *core.Artifact, 
 
 	if resp.StatusCode == http.StatusOK {
 		dLogger.Info("Artifact exists")
+
 		return true, nil
 	}
+
 	if resp.StatusCode == http.StatusNotFound {
 		dLogger.Info("Artifact does not exist")
+
 		return false, nil
 	}
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		dLogger.WithError(err).Error("Failed to read response body")
+
+		return false, fmt.Errorf("unexpected status code %d from Artifactory while checking existence: could not read response body: %w", resp.StatusCode, err)
+	}
+
 	dLogger.WithFields(logrus.Fields{
 		"status_code": resp.StatusCode,
 		"response":    string(bodyBytes),
 	}).Error("Received unexpected status code while checking artifact existence")
+
 	return false, fmt.Errorf("unexpected status code %d from Artifactory while checking existence: %s", resp.StatusCode, string(bodyBytes))
 }
 
@@ -297,7 +326,12 @@ func (d *JFrogDestination) handleResponse(resp *http.Response) error {
 	}).Debug("Processing JFrog response")
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			d.logger.WithError(err).Error("Failed to read response body")
+
+			return fmt.Errorf("failed to upload artifact: HTTP %d - could not read response body: %w", resp.StatusCode, err)
+		}
 
 		d.logger.WithFields(logrus.Fields{
 			"status_code":   resp.StatusCode,
@@ -350,22 +384,27 @@ func (d *JFrogDestination) GetConfig() JFrogConfig {
 
 // getHTTPClient returns the HTTP client, creating it lazily if needed.
 func (d *JFrogDestination) getHTTPClient() *http.Client {
-	if d.httpClient == nil {
+	d.clientOnce.Do(func() {
 		d.httpClient = &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: httpClientTimeout,
 		}
-	}
+	})
+
 	return d.httpClient
 }
 
 // getBaseURL returns the parsed base URL, parsing it lazily if needed.
 func (d *JFrogDestination) getBaseURL() (*url.URL, error) {
-	if d.baseURL == nil {
+	d.urlOnce.Do(func() {
 		parsedURL, err := url.Parse(d.config.URL)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JFrog URL %q: %w", d.config.URL, err)
+			d.urlErr = fmt.Errorf("invalid JFrog URL %q: %w", d.config.URL, err)
+
+			return
 		}
+
 		d.baseURL = parsedURL
-	}
-	return d.baseURL, nil
+	})
+
+	return d.baseURL, d.urlErr
 }

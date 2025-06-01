@@ -336,6 +336,7 @@ func sourcePathStrippingExample() {
 
 	// Example 1: Mirror from staging to production with prefix stripping
 	fmt.Println("📦 JFrog-to-JFrog mirroring with staging prefix strip")
+
 	result1, err := client.Mirror(ctx, garf.MirrorRequest{
 		Source:          "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
 		Destination:     "prod-repo",
@@ -346,11 +347,13 @@ func sourcePathStrippingExample() {
 	})
 	if err != nil {
 		log.Printf("Mirror failed: %v", err)
+
 		return
 	}
 
 	if result1.Error != nil {
 		log.Printf("Mirror operation failed: %v", result1.Error)
+
 		return
 	}
 
@@ -358,6 +361,7 @@ func sourcePathStrippingExample() {
 
 	// Example 2: Mirror with host-only stripping
 	fmt.Println("📦 JFrog-to-JFrog mirroring with host strip")
+
 	result2, err := client.Mirror(ctx, garf.MirrorRequest{
 		Source:          "https://artifactory.corp.net/repo/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
 		Destination:     "prod-repo",
@@ -368,11 +372,13 @@ func sourcePathStrippingExample() {
 	})
 	if err != nil {
 		log.Printf("Mirror failed: %v", err)
+
 		return
 	}
 
 	if result2.Error != nil {
 		log.Printf("Mirror operation failed: %v", result2.Error)
+
 		return
 	}
 
@@ -418,6 +424,7 @@ func apiFeatureExample() {
 
 	// Example 4: Ensure source availability
 	fmt.Println("🔍 Checking source availability...")
+
 	if err := client.EnsureSourceAvailable("github"); err != nil {
 		log.Printf("❌ GitHub source not available: %v", err)
 	} else {

@@ -12,7 +12,7 @@ import (
 	"github.com/albertocavalcante/garf/pkg/core/config"
 	"github.com/albertocavalcante/garf/pkg/io"
 	"github.com/albertocavalcante/garf/pkg/mirror"
-	"github.com/albertocavalcante/netrcgo"
+	netrc "github.com/albertocavalcante/netrcgo"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

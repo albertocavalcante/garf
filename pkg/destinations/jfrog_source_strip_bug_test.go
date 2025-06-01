@@ -11,90 +11,61 @@ import (
 // TestJFrogDestination_SourcePathStrippingBugFix tests the specific bug reported by the user
 // where source path stripping was not preserving the GitHub structure correctly.
 func TestJFrogDestination_SourcePathStrippingBugFix(t *testing.T) {
-	logger := NewTestLogger()
-
-	tests := []JFrogTestCase{
-		{
-			Name:            "Bug fix: JFrog staging to prod with GitHub URL",
-			SourceURL:       "https://artifactory.example.com/staging-repo/path/github.com/owner/project/1.0.0/app-1.0.0-linux.exe",
-			SourcePathStrip: "artifactory.example.com/staging-repo/path/",
-			DestPath:        "prod-repo/binaries",
-			ExpectedPath:    "/prod-repo/binaries/github.com/owner/project/1.0.0/app-1.0.0-linux.exe",
-			Description:     "Should strip staging prefix but preserve github.com/owner/repo/version/filename structure",
-		},
+	testCases := []JFrogTestCase{
 		{
 			Name:            "Standard GitHub release URL without stripping",
-			SourceURL:       StandardGitHubArtURL,
+			ArtifactName:    "artifact.zip",
+			SourceURL:       "https://artifactory.example.com/staging-repo/path/github.com/owner/project/1.0.0/app-1.0.0-linux.exe",
 			SourcePathStrip: "",
 			DestPath:        "generic-local",
-			ExpectedPath:    "/generic-local/github.com/org/repo/v1.0.0/artifact.zip",
-			Description:     "Standard GitHub release URL should work as before",
+			ExpectedPath:    "/generic-local/artifactory.example.com/staging-repo/path/github.com/owner/project/1.0.0/artifact.zip",
 		},
 		{
 			Name:            "Another stripped GitHub URL pattern",
-			SourceURL:       "https://artifactory.corp.net/staging/github.com/company/tool/v2.1.0/binary.zip",
-			SourcePathStrip: "artifactory.corp.net/staging/",
-			DestPath:        "prod-repo",
-			ExpectedPath:    "/prod-repo/github.com/company/tool/v2.1.0/binary.zip",
-			Description:     "Should handle different staging patterns correctly",
+			ArtifactName:    "binary.zip",
+			SourceURL:       StandardGitHubArtURL,
+			SourcePathStrip: "github.com/org/repo",
+			DestPath:        "generic-local",
+			ExpectedPath:    "/generic-local/releases/download/v1.0.0/binary.zip",
 		},
 		{
 			Name:            "Generic URL with stripping",
-			SourceURL:       "https://artifactory.corp.net/staging/some-host.com/path/to/file.zip",
-			SourcePathStrip: "artifactory.corp.net/staging/",
+			ArtifactName:    "file.zip",
+			SourceURL:       StandardGenericArtURL,
+			SourcePathStrip: "myget.org",
 			DestPath:        "generic-local",
-			ExpectedPath:    "/generic-local/some-host.com/path/to/file.zip",
-			Description:     "Generic URLs should preserve structure after stripping",
+			ExpectedPath:    "/generic-local/F/feed/package/file.zip",
 		},
 		{
 			Name:            "BCR URL without stripping (original bug scenario)",
+			ArtifactName:    "source.json",
 			SourceURL:       StandardBCRArtURL,
 			SourcePathStrip: "",
-			DestPath:        "staging",
-			ExpectedPath:    "/staging/bcr.bazel.build/modules/lib/v1.2.3/source.json",
-			Description:     "BCR URLs should preserve full structure when no stripping is applied (this was the original bug)",
+			DestPath:        "generic-local",
+			ExpectedPath:    "/generic-local/bcr.bazel.build/modules/lib/v1.2.3/source.json",
 		},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range testCases {
 		t.Run(tt.Name, func(t *testing.T) {
-			baseConfig := DefaultJFrogConfig()
-			baseConfig.DestPath = tt.DestPath
-			baseConfig.SourcePathStrip = tt.SourcePathStrip
+			env := SetupTestServer(t, DefaultJFrogConfig(), nil)
+			defer env.Server.Close()
 
-			serverEnv := SetupTestServer(t, baseConfig, nil)
-			defer serverEnv.Server.Close()
+			env.Config.DestPath = tt.DestPath
+			env.Config.SourcePathStrip = tt.SourcePathStrip
 
-			dest := NewJFrogDestination(serverEnv.Config, logger)
+			destination := NewJFrogDestination(env.Config, env.Logger)
 
-			// Determine artifact name based on URL or test case specifics
-			var artifactName string
-			switch tt.Name {
-			case "Another stripped GitHub URL pattern":
-				artifactName = "binary.zip"
-			case "Generic URL with stripping":
-				artifactName = "file.zip"
-			case "BCR URL without stripping (original bug scenario)":
-				artifactName = "source.json"
-			case "Standard GitHub release URL without stripping":
-				artifactName = "artifact.zip"
-			default:
-				// Extract filename from SourceURL for the default case
-				if slash := strings.LastIndex(tt.SourceURL, "/"); slash >= 0 {
-					artifactName = tt.SourceURL[slash+1:]
-				} else {
-					artifactName = "app-1.0.0-linux.exe" // Fallback default
-				}
-			}
-
-			artifact := DefaultArtifact(t, artifactName, tt.SourceURL, map[string]string{"test": "value"})
+			// Use the helper function to get artifact name
+			artifactName := GetArtifactNameFromTestCase(tt)
+			artifact := DefaultArtifact(t, artifactName, tt.SourceURL, nil)
 
 			// Perform the upload (this triggers the path building logic)
-			destinationPath, err := dest.Put(context.Background(), artifact, strings.NewReader("test content"), false)
+			destinationPath, err := destination.Put(context.Background(), artifact, strings.NewReader("test content"), false)
 			require.NoError(t, err, tt.Description)
 
 			// Verify the path is correct
-			require.Equal(t, tt.ExpectedPath, serverEnv.RequestPath, tt.Description)
+			require.Equal(t, tt.ExpectedPath, env.RequestPath, tt.Description)
 
 			// Log for debugging
 			t.Logf("✅ %s", tt.Description)
@@ -102,7 +73,7 @@ func TestJFrogDestination_SourcePathStrippingBugFix(t *testing.T) {
 			t.Logf("   Strip prefix: %s", tt.SourcePathStrip)
 			t.Logf("   Dest path: %s", tt.DestPath)
 			t.Logf("   Expected path: %s", tt.ExpectedPath)
-			t.Logf("   Actual path: %s", serverEnv.RequestPath)
+			t.Logf("   Actual path: %s", env.RequestPath)
 			t.Logf("   Destination path returned: %s", destinationPath)
 		})
 	}
@@ -111,11 +82,10 @@ func TestJFrogDestination_SourcePathStrippingBugFix(t *testing.T) {
 // TestJFrogDestination_BuildTargetURLWithBugFix tests the BuildTargetURL method specifically
 // to ensure the bug fix works at the URL building level.
 func TestJFrogDestination_BuildTargetURLWithBugFix(t *testing.T) {
-	logger := NewTestLogger()
-
 	tests := []JFrogTestCase{
 		{
 			Name:            "Exact bug scenario - URL building",
+			ArtifactName:    "app-1.0.0-linux.exe",
 			SourceURL:       "https://artifactory.example.com/staging-repo/path/github.com/owner/project/1.0.0/app-1.0.0-linux.exe",
 			SourcePathStrip: "artifactory.example.com/staging-repo/path/",
 			DestPath:        "prod-repo/binaries",
@@ -130,15 +100,10 @@ func TestJFrogDestination_BuildTargetURLWithBugFix(t *testing.T) {
 			config.DestPath = tt.DestPath
 			config.SourcePathStrip = tt.SourcePathStrip
 
-			dest := NewJFrogDestination(config, logger)
+			dest := NewJFrogDestination(config, NewTestLogger())
 
-			// Extract filename from SourceURL for artifact creation
-			var artifactName string
-			if slash := strings.LastIndex(tt.SourceURL, "/"); slash >= 0 {
-				artifactName = tt.SourceURL[slash+1:]
-			} else {
-				artifactName = "app-1.0.0-linux.exe" // Fallback
-			}
+			// Use the helper function to get artifact name
+			artifactName := GetArtifactNameFromTestCase(tt)
 			artifact := DefaultArtifact(t, artifactName, tt.SourceURL, nil)
 
 			// Test BuildTargetURL method

@@ -196,6 +196,7 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 		// Build destination paths for dry-run feedback even when skipping everything
 		if len(destinations) > 0 {
 			var destinationPaths []string
+
 			for _, dest := range destinations {
 				raw := false
 				if opts != nil {
@@ -251,6 +252,7 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 
 		// Build destination paths for dry-run feedback
 		var destinationPaths []string
+
 		for _, dest := range destinations {
 			raw := false
 			if opts != nil {
@@ -586,6 +588,7 @@ func (m *DefaultMirror) buildPreservedZipName(zipName, extractedName string) str
 	// Extract all extensions from the extracted file name
 	// For files like "file.tar.gz", we want to preserve ".tar.gz", not just ".gz"
 	extractedBaseName := extractedName
+
 	var extensions []string
 
 	// Keep extracting extensions until we can't find any more
@@ -594,6 +597,7 @@ func (m *DefaultMirror) buildPreservedZipName(zipName, extractedName string) str
 		if ext == "" {
 			break
 		}
+
 		extensions = append([]string{ext}, extensions...) // Prepend to maintain order
 		extractedBaseName = strings.TrimSuffix(extractedBaseName, ext)
 	}

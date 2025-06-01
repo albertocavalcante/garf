@@ -13,6 +13,7 @@ import (
 // JFrogTestCase holds common fields for JFrog destination test cases.
 type JFrogTestCase struct {
 	Name            string
+	ArtifactName    string // Add this field to specify artifact name explicitly
 	SourceURL       string
 	SourcePathStrip string
 	DestPath        string
@@ -30,6 +31,7 @@ type JFrogTestCase struct {
 func NewTestLogger() *logrus.Logger {
 	logger := logrus.New()
 	logger.SetLevel(logrus.DebugLevel) // Or a configurable level
+
 	return logger
 }
 
@@ -46,6 +48,7 @@ type TestServerEnv struct {
 // The returned JFrogConfig will have its URL pointing to this server.
 func SetupTestServer(t *testing.T, baseConfig JFrogConfig, handler http.HandlerFunc) *TestServerEnv {
 	t.Helper()
+
 	env := &TestServerEnv{
 		Logger: NewTestLogger(),
 	}
@@ -63,6 +66,7 @@ func SetupTestServer(t *testing.T, baseConfig JFrogConfig, handler http.HandlerF
 		user, pass, ok := r.BasicAuth()
 		if !ok || user != baseConfig.User || pass != baseConfig.Password {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+
 			return
 		}
 
@@ -115,3 +119,25 @@ const StandardBCRArtURL = "https://bcr.bazel.build/modules/lib/v1.2.3/source.jso
 
 // StandardGenericArtURL is a common generic URL for tests.
 const StandardGenericArtURL = "https://myget.org/F/feed/package/1.0.0"
+
+// ExtractArtifactNameFromURL safely extracts the artifact name from a URL or provides a default.
+func ExtractArtifactNameFromURL(sourceURL string) string {
+	if sourceURL == "" {
+		return "artifact"
+	}
+
+	if slash := strings.LastIndex(sourceURL, "/"); slash >= 0 {
+		return sourceURL[slash+1:]
+	}
+
+	return "artifact" // Fallback default
+}
+
+// GetArtifactNameFromTestCase returns the artifact name from a test case, extracting from URL if not specified.
+func GetArtifactNameFromTestCase(tc JFrogTestCase) string {
+	if tc.ArtifactName != "" {
+		return tc.ArtifactName
+	}
+
+	return ExtractArtifactNameFromURL(tc.SourceURL)
+}

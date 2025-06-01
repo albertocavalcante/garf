@@ -446,8 +446,10 @@ func TestJFrogDestinationArtifactNameInPath(t *testing.T) {
 	baseConfig.DestPath = "my-repo"
 
 	var requestPath string
+
 	serverEnv := destinations.SetupTestServer(t, baseConfig, func(w http.ResponseWriter, r *http.Request) {
 		requestPath = r.URL.Path // Capture path for assertion
+
 		w.WriteHeader(http.StatusCreated)
 	})
 	defer serverEnv.Server.Close()

@@ -78,10 +78,12 @@ func (p *GitHubProcessor) Process(sourceURL *url.URL, raw bool) string {
 		if raw {
 			result := fmt.Sprintf("github.com/%s/%s/releases/download/%s/%s", owner, repo, version, filename)
 			logger.WithField("result_path", result).Info("Built raw GitHub path from standard release URL")
+
 			return result
 		} else {
 			result := fmt.Sprintf("github.com/%s/%s/%s/%s", owner, repo, version, filename)
 			logger.WithField("result_path", result).Info("Built structured GitHub path from standard release URL")
+
 			return result
 		}
 	}
@@ -116,6 +118,7 @@ func (p *GitHubProcessor) Process(sourceURL *url.URL, raw bool) string {
 
 				result := fmt.Sprintf("github.com/%s/%s/%s/%s", owner, repo, potentialVersion, filename)
 				logger.WithField("result_path", result).Info("Built structured GitHub path from stripped URL coordinates")
+
 				return result
 			}
 		}
@@ -128,11 +131,13 @@ func (p *GitHubProcessor) Process(sourceURL *url.URL, raw bool) string {
 
 			result := fmt.Sprintf("github.com/%s/%s/%s", owner, repo, filename)
 			logger.WithField("result_path", result).Info("Built structured GitHub path from owner/repo pattern")
+
 			return result
 		}
 	}
 
 	// Fallback: if we can't parse the structure, just return the filename
 	logger.WithField("result_path", filename).Info("Using filename as fallback for unrecognized GitHub URL pattern")
+
 	return filename
 }

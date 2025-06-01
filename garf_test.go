@@ -17,12 +17,14 @@ import (
 // createTestClient creates a standard test client with default configuration.
 func createTestClient(t *testing.T) *garf.Client {
 	t.Helper()
+
 	client, err := garf.NewClient(garf.Config{
 		JFrogURL:      "https://test.jfrog.io/artifactory",
 		JFrogUser:     "testuser",
 		JFrogPassword: "testpass",
 	})
 	require.NoError(t, err)
+
 	return client
 }
 
@@ -50,12 +52,15 @@ func createDryRunRequestWithStrip(source, destination, sourcePathStrip string) g
 // runConcurrentMirrorTest runs a concurrent test with the given number of goroutines and iterations.
 func runConcurrentMirrorTest(t *testing.T, client *garf.Client, numGoroutines, numIterations int, requestFunc func(int, int) garf.MirrorRequest) {
 	t.Helper()
+
 	ctx := context.Background()
 	start := make(chan struct{})
+
 	var wg sync.WaitGroup
 
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
+
 		go func(id int) {
 			defer wg.Done()
 			<-start // Wait for signal to start
@@ -523,17 +528,20 @@ func TestClient_RaceConditionWithDifferentSourcePathStrip(t *testing.T) {
 
 	// Use a channel to synchronize goroutine starts
 	start := make(chan struct{})
+
 	var wg sync.WaitGroup
 
 	// Test concurrent access with different source path strip configurations
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
+
 		go func(id int) {
 			defer wg.Done()
 			<-start // Wait for signal to start
 
 			// Alternate between different strip configurations
 			var sourcePathStrip string
+
 			switch id % 3 {
 			case 0:
 				sourcePathStrip = "artifactory.corp.net/staging/"

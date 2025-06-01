@@ -141,7 +141,8 @@ func (c *JFrogClient) UploadGenericArtifact(
 
 	// Upload the artifact
 	uploadServiceOptions := artifactory.UploadServiceOptions{}
-	_, totalFailed, err := c.ArtifactoryServicesManager.UploadFiles(uploadServiceOptions, params)
+
+	_, totalFailed, err := c.UploadFiles(uploadServiceOptions, params)
 	if err != nil {
 		return fmt.Errorf("failed to upload artifact: %w", err)
 	}
