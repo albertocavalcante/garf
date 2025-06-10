@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.4](https://github.com/albertocavalcante/garf/compare/v0.5.3...v0.5.4) (2025-06-10)
+
+
+### Features
+
+* **jfrog_url:** normalize JFrog URL to ensure presence of `/artifactory` if missing ([#126](https://github.com/albertocavalcante/garf/issues/126)) ([dc087e3](https://github.com/albertocavalcante/garf/commit/dc087e37eb6c81d663c5ef79918f59ba1a7277f3))
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/tools to v0.34.0 ([#123](https://github.com/albertocavalcante/garf/issues/123)) ([22051e5](https://github.com/albertocavalcante/garf/commit/22051e561550b1a12091b78052614247ce04fef2))
+
 ## [0.5.3](https://github.com/albertocavalcante/garf/compare/v0.5.2...v0.5.3) (2025-06-01)
 
 
