@@ -371,15 +371,11 @@ func getJFrogURL(flags *MirrorFlags, v *viper.Viper) (string, error) {
 
 	// Normalize URL
 	if jfrogURL != "" {
-		// Add scheme if missing
+		// Add scheme if missing (CLI convenience feature)
 		if !strings.HasPrefix(jfrogURL, "http://") && !strings.HasPrefix(jfrogURL, "https://") {
 			jfrogURL = "http://" + jfrogURL
 		}
-
-		// Ensure /artifactory path
-		if !strings.Contains(jfrogURL, "/artifactory") {
-			jfrogURL = strings.TrimSuffix(jfrogURL, "/") + "/artifactory"
-		}
+		// Note: /artifactory path normalization is now handled by the JFrog destination library
 	}
 
 	// Validate

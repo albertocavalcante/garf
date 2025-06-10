@@ -18,7 +18,7 @@ func TestJFrogDestination_SourcePathStrippingBugFix(t *testing.T) {
 			SourceURL:       "https://artifactory.example.com/staging-repo/path/github.com/owner/project/1.0.0/app-1.0.0-linux.exe",
 			SourcePathStrip: "",
 			DestPath:        "generic-local",
-			ExpectedPath:    "/generic-local/artifactory.example.com/staging-repo/path/github.com/owner/project/1.0.0/artifact.zip",
+			ExpectedPath:    "/artifactory/generic-local/artifactory.example.com/staging-repo/path/github.com/owner/project/1.0.0/artifact.zip",
 		},
 		{
 			Name:            "Another stripped GitHub URL pattern",
@@ -26,7 +26,7 @@ func TestJFrogDestination_SourcePathStrippingBugFix(t *testing.T) {
 			SourceURL:       StandardGitHubArtURL,
 			SourcePathStrip: "github.com/org/repo",
 			DestPath:        "generic-local",
-			ExpectedPath:    "/generic-local/releases/download/v1.0.0/binary.zip",
+			ExpectedPath:    "/artifactory/generic-local/releases/download/v1.0.0/binary.zip",
 		},
 		{
 			Name:            "Generic URL with stripping",
@@ -34,7 +34,7 @@ func TestJFrogDestination_SourcePathStrippingBugFix(t *testing.T) {
 			SourceURL:       StandardGenericArtURL,
 			SourcePathStrip: "myget.org",
 			DestPath:        "generic-local",
-			ExpectedPath:    "/generic-local/F/feed/package/file.zip",
+			ExpectedPath:    "/artifactory/generic-local/F/feed/package/file.zip",
 		},
 		{
 			Name:            "BCR URL without stripping (original bug scenario)",
@@ -42,7 +42,7 @@ func TestJFrogDestination_SourcePathStrippingBugFix(t *testing.T) {
 			SourceURL:       StandardBCRArtURL,
 			SourcePathStrip: "",
 			DestPath:        "generic-local",
-			ExpectedPath:    "/generic-local/bcr.bazel.build/modules/lib/v1.2.3/source.json",
+			ExpectedPath:    "/artifactory/generic-local/bcr.bazel.build/modules/lib/v1.2.3/source.json",
 		},
 	}
 
@@ -89,7 +89,7 @@ func TestJFrogDestination_BuildTargetURLWithBugFix(t *testing.T) {
 			SourceURL:       "https://artifactory.example.com/staging-repo/path/github.com/owner/project/1.0.0/app-1.0.0-linux.exe",
 			SourcePathStrip: "artifactory.example.com/staging-repo/path/",
 			DestPath:        "prod-repo/binaries",
-			ExpectedPath:    "/prod-repo/binaries/github.com/owner/project/1.0.0/app-1.0.0-linux.exe",
+			ExpectedPath:    "/artifactory/prod-repo/binaries/github.com/owner/project/1.0.0/app-1.0.0-linux.exe",
 			Description:     "BuildTargetURL should generate correct path with GitHub structure preserved",
 		},
 	}

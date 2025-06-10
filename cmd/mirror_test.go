@@ -432,7 +432,7 @@ func TestGetConfig(t *testing.T) {
 			name:         "URL normalization - adding scheme",
 			jfrogURL:     "example.jfrog.io",
 			destination:  "repo-local",
-			expectedURL:  "http://example.jfrog.io/artifactory",
+			expectedURL:  "http://example.jfrog.io",
 			expectedPath: "repo-local",
 		},
 		{

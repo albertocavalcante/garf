@@ -142,28 +142,37 @@ func (d *JFrogDestination) buildFullURL(structuredPath string, metadata map[stri
 		return nil, err
 	}
 
-	// finalPath is the full path component including the destination repository.
-	finalPath := path.Join(d.config.DestPath, structuredPath)
+	// Combine the base URL path (e.g., "/artifactory") with destination path and structured path
+	artifactPath := path.Join(d.config.DestPath, structuredPath)
+
+	// Join the base URL path with the artifact path
+	// This preserves any existing path in the base URL (like /artifactory)
+	combinedPath := path.Join(baseURL.Path, artifactPath)
 
 	// Ensure the path starts with a slash as it's a URL path component
-	if !strings.HasPrefix(finalPath, "/") {
-		finalPath = "/" + finalPath
+	if !strings.HasPrefix(combinedPath, "/") {
+		combinedPath = "/" + combinedPath
 	}
 
-	// Make a copy of baseURL to avoid modifying the original shared instance's Path
+	// Make a copy of baseURL to avoid modifying the original shared instance
 	targetURL := *baseURL // Shallow copy is fine as we only modify Path/RawPath
-	targetURL.Path = finalPath
+	targetURL.Path = combinedPath
 
 	if len(metadata) > 0 {
 		matrixParams := d.buildMatrixParams(metadata)
-		targetURL.Path = finalPath + matrixParams
+		targetURL.Path = combinedPath + matrixParams
 		d.logger.WithFields(logrus.Fields{
 			"metadata":    metadata,
 			"matrix_path": targetURL.Path,
 		}).Debug("Added matrix parameters to URL")
 	}
 
-	d.logger.WithField("final_url", targetURL.String()).Info("Built final target URL for JFrog upload")
+	d.logger.WithFields(logrus.Fields{
+		"base_url_path": baseURL.Path,
+		"artifact_path": artifactPath,
+		"combined_path": combinedPath,
+		"final_url":     targetURL.String(),
+	}).Info("Built final target URL for JFrog upload")
 
 	return &targetURL, nil
 }
@@ -396,9 +405,17 @@ func (d *JFrogDestination) getHTTPClient() *http.Client {
 // getBaseURL returns the parsed base URL, parsing it lazily if needed.
 func (d *JFrogDestination) getBaseURL() (*url.URL, error) {
 	d.urlOnce.Do(func() {
-		parsedURL, err := url.Parse(d.config.URL)
+		// Normalize the URL to ensure /artifactory path is present
+		normalizedURL, err := d.normalizeJFrogURL(d.config.URL)
 		if err != nil {
-			d.urlErr = fmt.Errorf("invalid JFrog URL %q: %w", d.config.URL, err)
+			d.urlErr = fmt.Errorf("failed to normalize JFrog URL %q: %w", d.config.URL, err)
+
+			return
+		}
+
+		parsedURL, err := url.Parse(normalizedURL)
+		if err != nil {
+			d.urlErr = fmt.Errorf("invalid JFrog URL %q: %w", normalizedURL, err)
 
 			return
 		}
@@ -407,4 +424,54 @@ func (d *JFrogDestination) getBaseURL() (*url.URL, error) {
 	})
 
 	return d.baseURL, d.urlErr
+}
+
+// normalizeJFrogURL ensures the JFrog URL has the /artifactory path component.
+// It handles both cases: URLs with and without /artifactory.
+func (d *JFrogDestination) normalizeJFrogURL(rawURL string) (string, error) {
+	if rawURL == "" {
+		return "", fmt.Errorf("URL cannot be empty")
+	}
+
+	// Parse the URL to work with its components
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse URL: %w", err)
+	}
+
+	// Validate scheme
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", fmt.Errorf("invalid URL scheme %q, must be http or https", u.Scheme)
+	}
+
+	// Validate host
+	if u.Host == "" {
+		return "", fmt.Errorf("URL must have a host")
+	}
+
+	// Handle the path component
+	path := u.Path
+
+	// If path is empty or just "/", add /artifactory
+	if path == "" || path == "/" {
+		u.Path = "/artifactory"
+		d.logger.WithFields(logrus.Fields{
+			"original_url":   rawURL,
+			"normalized_url": u.String(),
+		}).Debug("Added /artifactory to JFrog URL")
+	} else if !strings.Contains(path, "/artifactory") {
+		// If path doesn't contain /artifactory, append it
+		u.Path = strings.TrimSuffix(path, "/") + "/artifactory"
+		d.logger.WithFields(logrus.Fields{
+			"original_url":   rawURL,
+			"normalized_url": u.String(),
+		}).Debug("Appended /artifactory to existing JFrog URL path")
+	} else {
+		// Path already contains /artifactory, keep as-is
+		d.logger.WithFields(logrus.Fields{
+			"url": rawURL,
+		}).Debug("JFrog URL already contains /artifactory, no normalization needed")
+	}
+
+	return u.String(), nil
 }
