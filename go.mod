@@ -6,7 +6,7 @@ toolchain go1.24.4
 
 require (
 	github.com/albertocavalcante/netrcgo v0.1.2
-	github.com/jfrog/jfrog-client-go v1.53.1
+	github.com/jfrog/jfrog-client-go v1.54.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
@@ -21,7 +21,7 @@ require (
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/bazelbuild/rules_go v0.54.1 // indirect
-	github.com/cloudflare/circl v1.6.0 // indirect
+	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsnet/compress v0.0.1 // indirect
@@ -39,7 +39,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jfrog/archiver/v3 v3.6.1 // indirect
-	github.com/jfrog/build-info-go v1.10.12 // indirect
+	github.com/jfrog/build-info-go v1.10.14 // indirect
 	github.com/jfrog/gofrog v1.7.6 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
