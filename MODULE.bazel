@@ -13,7 +13,7 @@ bazel_dep(name = "buildifier_prebuilt", version = "8.2.0.2")
 bazel_dep(name = "bazel_env.bzl", version = "0.3.2")
 
 go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
-go_sdk.download(version = "1.24.3")
+go_sdk.download(version = "1.24.4")
 go_sdk.nogo(nogo = "//:garf_nogo")
 
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
