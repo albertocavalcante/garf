@@ -361,7 +361,20 @@ func (m *DefaultMirror) performConcurrentUploads(
 	for i, dest := range destinations {
 		wg.Add(1)
 
-		go m.uploadWorker(ctx, dest, readers[i], finalArtifact, opts, logger, i, &wg, errChan, destinationPathChan)
+		params := &UploadWorkerParams{
+			ctx:                 ctx,
+			dest:                dest,
+			reader:              readers[i],
+			finalArtifact:       finalArtifact,
+			opts:                opts,
+			logger:              logger,
+			index:               i,
+			wg:                  &wg,
+			errChan:             errChan,
+			destinationPathChan: destinationPathChan,
+		}
+
+		go m.uploadWorker(params)
 	}
 
 	wg.Wait()
@@ -384,33 +397,36 @@ func (m *DefaultMirror) performConcurrentUploads(
 	return lastErr, destinationPath
 }
 
-// uploadWorker handles upload to a single destination.
-func (m *DefaultMirror) uploadWorker(
-	ctx context.Context,
-	dest core.Destination,
-	reader io.Reader,
-	finalArtifact *core.Artifact,
-	opts *core.MirrorOptions,
-	logger *logrus.Entry,
-	index int,
-	wg *sync.WaitGroup,
-	errChan chan<- error,
-	destinationPathChan chan<- string,
-) {
-	defer wg.Done()
+// UploadWorkerParams holds parameters for the upload worker.
+type UploadWorkerParams struct {
+	ctx                 context.Context
+	dest                core.Destination
+	reader              io.Reader
+	finalArtifact       *core.Artifact
+	opts                *core.MirrorOptions
+	logger              *logrus.Entry
+	index               int
+	wg                  *sync.WaitGroup
+	errChan             chan<- error
+	destinationPathChan chan<- string
+}
 
-	destLogger := logger.WithField("destination_index", index)
+// uploadWorker handles upload to a single destination.
+func (m *DefaultMirror) uploadWorker(params *UploadWorkerParams) {
+	defer params.wg.Done()
+
+	destLogger := params.logger.WithField("destination_index", params.index)
 	destLogger.Debug("Starting upload to destination")
 
-	raw := opts != nil && opts.Raw
+	raw := params.opts != nil && params.opts.Raw
 
-	destinationPath, err := dest.Put(ctx, finalArtifact, reader, raw)
+	destinationPath, err := params.dest.Put(params.ctx, params.finalArtifact, params.reader, raw)
 	if err != nil {
 		destLogger.WithError(err).Error("Failed to upload to destination")
-		errChan <- fmt.Errorf("failed to upload to destination: %w", err)
+		params.errChan <- fmt.Errorf("failed to upload to destination: %w", err)
 	} else {
 		destLogger.WithField("destination_path", destinationPath).Info("Successfully uploaded to destination")
-		destinationPathChan <- destinationPath
+		params.destinationPathChan <- destinationPath
 	}
 }
 
