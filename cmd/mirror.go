@@ -143,9 +143,9 @@ func setupProcessingFlags(cmd *cobra.Command, flags *MirrorFlags) {
 	cmd.Flags().BoolVar(&flags.Raw, "raw", false, "Raw Mirror. Keep the original URL structure in the destination path")
 	cmd.Flags().StringArrayVar(&flags.Properties, "properties", []string{}, "Properties to attach to the artifact")
 	cmd.Flags().BoolVar(&flags.Unzip, "unzip", false, "Unzip and upload content if source is a zip file with a single file inside")
-	cmd.Flags().BoolVar(&flags.PreserveZipName, "preserve-zip-name", false, "Preserve the ZIP filename when extracting")
+	cmd.Flags().BoolVar(&flags.PreserveZipName, "preserve-zip-name", false, "Preserve the ZIP filename when extracting, replacing the ZIP extension with the extracted file's extension")
 	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "Perform a dry run without making actual changes")
-	cmd.Flags().StringVar(&flags.DryRunMode, "dry-run-mode", "all", "Dry run mode: 'all' or 'upload'")
+	cmd.Flags().StringVar(&flags.DryRunMode, "dry-run-mode", "all", "Dry run mode: 'all' (skip all operations), 'upload' (skip only upload to Artifactory)")
 }
 
 // setupJFrogFlags configures JFrog-specific flags.

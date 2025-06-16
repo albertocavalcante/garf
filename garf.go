@@ -204,7 +204,8 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 	}
 
 	// Setup context and sources
-	ctx = c.setupContextWithTimeout(ctx)
+	ctx, cancel := c.setupContextWithTimeout(ctx)
+	defer cancel()
 
 	if err := c.setupMirrorSources(request); err != nil {
 		return nil, err
@@ -230,19 +231,17 @@ func (c *Client) createRequestLogger(request MirrorRequest) *logrus.Entry {
 }
 
 // setupContextWithTimeout applies timeout to context if configured.
-func (c *Client) setupContextWithTimeout(ctx context.Context) context.Context {
+// Returns the context and a cancel function that should be deferred by the caller.
+func (c *Client) setupContextWithTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	if c.Config.Timeout <= 0 {
-		return ctx
+		return ctx, func() {} // Return no-op cancel function
 	}
 
 	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) <= c.Config.Timeout {
-		return ctx
+		return ctx, func() {} // Return no-op cancel function
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, c.Config.Timeout)
-	_ = cancel // Will be handled by caller
-
-	return ctx
+	return context.WithTimeout(ctx, c.Config.Timeout)
 }
 
 // setupMirrorSources ensures the appropriate source is available.
