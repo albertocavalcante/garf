@@ -938,3 +938,45 @@ func TestRegistryTypeWithNewClient(t *testing.T) {
 		})
 	}
 }
+
+// TestCloudsmithRegistryNotImplemented tests that Cloudsmith registry type properly
+// returns "not yet implemented" error when attempting to mirror, preventing silent failures.
+func TestCloudsmithRegistryNotImplemented(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.DebugLevel)
+
+	// Create a client with Cloudsmith registry type
+	config := garf.Config{
+		JFrogURL:      "https://test.jfrog.io/artifactory", // Still needed for validation
+		JFrogUser:     "testuser",
+		JFrogPassword: "testpass",
+		RegistryType:  "cloudsmith", // This should trigger the "not implemented" path
+		Logger:        logger,
+	}
+
+	client, err := garf.NewClient(config)
+	require.NoError(t, err, "Client creation should succeed with cloudsmith registry type")
+	require.NotNil(t, client)
+	require.Equal(t, "cloudsmith", client.Config.RegistryType)
+
+	// Create a mirror request
+	request := garf.MirrorRequest{
+		Source:      "https://github.com/example/repo/releases/download/v1.0.0/test-file.zip",
+		Destination: "test-repo",
+		DryRun:      false, // Important: not a dry run, should attempt actual destination creation
+	}
+
+	// Attempt to mirror - this should fail with "not yet implemented" error
+	ctx := context.Background()
+	result, err := client.Mirror(ctx, request)
+
+	// Verify the error is returned and contains the expected message
+	require.Error(t, err, "Mirror should fail for unimplemented Cloudsmith registry")
+	require.Contains(t, err.Error(), "cloudsmith registry not yet implemented",
+		"Error should clearly indicate Cloudsmith is not implemented")
+
+	// Verify result is nil when destination creation fails
+	require.Nil(t, result, "Result should be nil when destination creation fails")
+
+	t.Logf("Successfully verified Cloudsmith registry returns expected error: %v", err)
+}
