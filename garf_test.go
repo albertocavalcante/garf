@@ -101,7 +101,7 @@ func TestNewClient(t *testing.T) {
 				JFrogPassword: "testpass",
 			},
 			expectError: true,
-			errorMsg:    "JFrogURL is required",
+			errorMsg:    "registry URL is required",
 		},
 		{
 			name: "missing JFrogUser",
@@ -110,7 +110,7 @@ func TestNewClient(t *testing.T) {
 				JFrogPassword: "testpass",
 			},
 			expectError: true,
-			errorMsg:    "JFrogUser is required",
+			errorMsg:    "registry user is required",
 		},
 		{
 			name: "missing JFrogPassword",
@@ -119,7 +119,7 @@ func TestNewClient(t *testing.T) {
 				JFrogUser: "testuser",
 			},
 			expectError: true,
-			errorMsg:    "JFrogPassword is required",
+			errorMsg:    "registry password is required",
 		},
 		{
 			name: "config with custom logger",
@@ -221,7 +221,7 @@ func TestValidateConfig(t *testing.T) {
 			name:        "empty config",
 			config:      garf.Config{},
 			expectError: true,
-			errorMsg:    "JFrogURL is required",
+			errorMsg:    "registry URL is required",
 		},
 		{
 			name: "missing user",
@@ -230,7 +230,7 @@ func TestValidateConfig(t *testing.T) {
 				JFrogPassword: "testpass",
 			},
 			expectError: true,
-			errorMsg:    "JFrogUser is required",
+			errorMsg:    "registry user is required",
 		},
 		{
 			name: "missing password",
@@ -239,7 +239,7 @@ func TestValidateConfig(t *testing.T) {
 				JFrogUser: "testuser",
 			},
 			expectError: true,
-			errorMsg:    "JFrogPassword is required",
+			errorMsg:    "registry password is required",
 		},
 	}
 
@@ -939,19 +939,19 @@ func TestRegistryTypeWithNewClient(t *testing.T) {
 	}
 }
 
-// TestCloudsmithRegistryNotImplemented tests that Cloudsmith registry type properly
-// returns "not yet implemented" error when attempting to mirror, preventing silent failures.
-func TestCloudsmithRegistryNotImplemented(t *testing.T) {
+// TestCloudsmithRegistryImplementation tests that Cloudsmith registry type properly
+// creates destinations and validates configuration, verifying the implementation works.
+func TestCloudsmithRegistryImplementation(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.DebugLevel)
 
 	// Create a client with Cloudsmith registry type
 	config := garf.Config{
-		JFrogURL:      "https://test.jfrog.io/artifactory", // Still needed for validation
-		JFrogUser:     "testuser",
-		JFrogPassword: "testpass",
-		RegistryType:  "cloudsmith", // This should trigger the "not implemented" path
-		Logger:        logger,
+		RegistryURL:      "https://api.cloudsmith.io",
+		RegistryUser:     "testuser",
+		RegistryPassword: "testpass",
+		RegistryType:     "cloudsmith",
+		Logger:           logger,
 	}
 
 	client, err := garf.NewClient(config)
@@ -959,24 +959,25 @@ func TestCloudsmithRegistryNotImplemented(t *testing.T) {
 	require.NotNil(t, client)
 	require.Equal(t, "cloudsmith", client.Config.RegistryType)
 
-	// Create a mirror request
+	// Test that the client successfully handles Cloudsmith registry type
+	// We'll test this indirectly through a dry-run mirror operation
 	request := garf.MirrorRequest{
-		Source:      "https://github.com/example/repo/releases/download/v1.0.0/test-file.zip",
-		Destination: "test-repo",
-		DryRun:      false, // Important: not a dry run, should attempt actual destination creation
+		Source:      "https://github.com/example/repo/releases/download/v1.0.0/test-artifact.zip",
+		Destination: "owner/repo",
+		DryRun:      true,  // Use dry run to test destination creation without network calls
+		DryRunMode:  "all", // Ensure we skip all operations including download
 	}
 
-	// Attempt to mirror - this should fail with "not yet implemented" error
+	// Attempt to mirror in dry-run mode - this should succeed and create the destination
 	ctx := context.Background()
 	result, err := client.Mirror(ctx, request)
 
-	// Verify the error is returned and contains the expected message
-	require.Error(t, err, "Mirror should fail for unimplemented Cloudsmith registry")
-	require.Contains(t, err.Error(), "cloudsmith registry not yet implemented",
-		"Error should clearly indicate Cloudsmith is not implemented")
+	// In dry-run mode, this should succeed without actual network calls
+	require.NoError(t, err, "Mirror should succeed for Cloudsmith registry in dry-run mode")
+	require.NotNil(t, result, "Result should not be nil in dry-run mode")
+	require.Equal(t, request.Source, result.Source, "Source should match")
+	require.Contains(t, result.DestinationPath, "owner/repo", "Destination path should contain owner/repo")
+	require.Contains(t, result.DestinationPath, "test-artifact.zip", "Destination path should contain artifact name")
 
-	// Verify result is nil when destination creation fails
-	require.Nil(t, result, "Result should be nil when destination creation fails")
-
-	t.Logf("Successfully verified Cloudsmith registry returns expected error: %v", err)
+	t.Logf("Successfully verified Cloudsmith registry implementation with destination: %s", result.DestinationPath)
 }

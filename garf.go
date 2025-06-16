@@ -65,13 +65,19 @@ const (
 
 // Config holds the configuration for the garf client.
 type Config struct {
-	// JFrog Artifactory configuration
-	JFrogURL      string
-	JFrogUser     string
-	JFrogPassword string
+	// Generic registry credentials (PREFERRED - supports both JFrog and Cloudsmith)
+	RegistryURL      string // Replaces JFrogURL but supports both
+	RegistryUser     string // Replaces JFrogUser but supports both
+	RegistryPassword string // Replaces JFrogPassword but supports both
 
 	// Registry type (defaults to "jfrog" for backward compatibility)
 	RegistryType string
+
+	// DEPRECATED: JFrog-specific fields (kept for backward compatibility)
+	// These will be mapped to Registry* fields if Registry* fields are empty
+	JFrogURL      string
+	JFrogUser     string
+	JFrogPassword string
 
 	// Optional: Custom logger (if nil, a default logger will be used)
 	Logger *logrus.Logger
@@ -85,8 +91,8 @@ type Config struct {
 
 // String implements fmt.Stringer to prevent accidental credential logging.
 func (c Config) String() string {
-	return fmt.Sprintf("Config{JFrogURL: %s, JFrogUser: %s, JFrogPassword: [REDACTED], Timeout: %v, Concurrent: %d}",
-		c.JFrogURL, c.JFrogUser, c.Timeout, c.Concurrent)
+	return fmt.Sprintf("Config{RegistryType: %s, RegistryURL: %s, RegistryUser: %s, RegistryPassword: [REDACTED], Timeout: %v, Concurrent: %d}",
+		c.RegistryType, c.RegistryURL, c.RegistryUser, c.Timeout, c.Concurrent)
 }
 
 // MirrorRequest represents a single mirror operation request.
@@ -322,16 +328,32 @@ func ValidateConfig(config Config) error {
 		return fmt.Errorf("unsupported registry type: %s", config.RegistryType)
 	}
 
-	if config.JFrogURL == "" {
-		return fmt.Errorf("JFrogURL is required")
+	// Check for registry credentials (prefer new generic fields, fallback to legacy)
+	url := config.RegistryURL
+	if url == "" {
+		url = config.JFrogURL // Backward compatibility
 	}
 
-	if config.JFrogUser == "" {
-		return fmt.Errorf("JFrogUser is required")
+	if url == "" {
+		return fmt.Errorf("registry URL is required (use RegistryURL or JFrogURL)")
 	}
 
-	if config.JFrogPassword == "" {
-		return fmt.Errorf("JFrogPassword is required")
+	user := config.RegistryUser
+	if user == "" {
+		user = config.JFrogUser // Backward compatibility
+	}
+
+	if user == "" {
+		return fmt.Errorf("registry user is required (use RegistryUser or JFrogUser)")
+	}
+
+	password := config.RegistryPassword
+	if password == "" {
+		password = config.JFrogPassword // Backward compatibility
+	}
+
+	if password == "" {
+		return fmt.Errorf("registry password is required (use RegistryPassword or JFrogPassword)")
 	}
 
 	if config.Timeout < 0 {
@@ -424,7 +446,7 @@ func (c *Client) createDestination(destPath, sourcePathStrip string) (core.Desti
 	case core.RegistryTypeJFrog:
 		return c.createJFrogDestination(destPath, sourcePathStrip)
 	case core.RegistryTypeCloudsmith:
-		return nil, fmt.Errorf("cloudsmith registry not yet implemented")
+		return c.createCloudsmithDestination(destPath, sourcePathStrip)
 	default:
 		return nil, fmt.Errorf("unsupported registry type: %s", registryType)
 	}
@@ -432,15 +454,60 @@ func (c *Client) createDestination(destPath, sourcePathStrip string) (core.Desti
 
 // createJFrogDestination creates a new JFrog destination with the given configuration.
 func (c *Client) createJFrogDestination(destPath, sourcePathStrip string) (core.Destination, error) {
+	// Support both new Registry* fields and legacy JFrog* fields for backward compatibility
+	url := c.Config.RegistryURL
+	if url == "" {
+		url = c.Config.JFrogURL // Backward compatibility
+	}
+
+	user := c.Config.RegistryUser
+	if user == "" {
+		user = c.Config.JFrogUser // Backward compatibility
+	}
+
+	password := c.Config.RegistryPassword
+	if password == "" {
+		password = c.Config.JFrogPassword // Backward compatibility
+	}
+
 	jfrogConfig := destinations.JFrogConfig{
-		URL:             c.Config.JFrogURL,
-		User:            c.Config.JFrogUser,
-		Password:        c.Config.JFrogPassword,
+		URL:             url,
+		User:            user,
+		Password:        password,
 		DestPath:        destPath,
 		SourcePathStrip: sourcePathStrip,
 	}
 
 	return destinations.NewJFrogDestination(jfrogConfig, c.logger), nil
+}
+
+// createCloudsmithDestination creates a new Cloudsmith destination with the given configuration.
+func (c *Client) createCloudsmithDestination(destPath, sourcePathStrip string) (core.Destination, error) {
+	// Support both new Registry* fields and legacy JFrog* fields for backward compatibility
+	url := c.Config.RegistryURL
+	if url == "" {
+		url = c.Config.JFrogURL // Backward compatibility fallback
+	}
+
+	user := c.Config.RegistryUser
+	if user == "" {
+		user = c.Config.JFrogUser // Backward compatibility fallback
+	}
+
+	password := c.Config.RegistryPassword
+	if password == "" {
+		password = c.Config.JFrogPassword // Backward compatibility fallback
+	}
+
+	cloudsmithConfig := destinations.CloudsmithConfig{
+		URL:             url,
+		User:            user,
+		Password:        password,
+		DestPath:        destPath,
+		SourcePathStrip: sourcePathStrip,
+	}
+
+	return destinations.NewCloudsmithDestination(cloudsmithConfig, c.logger), nil
 }
 
 // DetectSourceType determines the source type based on the URL.
