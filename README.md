@@ -21,6 +21,8 @@ This CLI tool simplifies the artifact mirroring workflow by:
 
 ### Environment Setup
 
+#### JFrog Artifactory
+
 ```sh
 # Linux/macOS
 export JFROG_URL="https://your-instance.jfrog.io/artifactory"
@@ -33,7 +35,25 @@ set JFROG_USER=username
 set JFROG_PASSWORD=password
 ```
 
-### Simple Example
+#### Cloudsmith
+
+```sh
+# Linux/macOS
+export REGISTRY_TYPE="cloudsmith"
+export REGISTRY_URL="https://api.cloudsmith.io"
+export REGISTRY_USER="your-username"
+export REGISTRY_PASSWORD="your-api-key"
+
+# Windows
+set REGISTRY_TYPE=cloudsmith
+set REGISTRY_URL=https://api.cloudsmith.io
+set REGISTRY_USER=your-username
+set REGISTRY_PASSWORD=your-api-key
+```
+
+### Simple Examples
+
+#### JFrog Artifactory
 
 ```sh
 bazel run //:garf -- mirror \
@@ -41,9 +61,20 @@ bazel run //:garf -- mirror \
   --destination tools-local
 ```
 
+#### Cloudsmith
+
+```sh
+bazel run //:garf -- mirror \
+  --registry-type cloudsmith \
+  --source https://github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-7.2.1-windows-x86_64.exe \
+  --destination owner/repo
+```
+
 ## Usage Examples
 
-### Mirror GitHub Release Asset
+### JFrog Artifactory Examples
+
+#### Mirror GitHub Release Asset
 
 ```sh
 bazel run //:garf -- mirror \
@@ -51,7 +82,7 @@ bazel run //:garf -- mirror \
   --destination tools-local
 ```
 
-### Add Metadata Properties
+#### Add Metadata Properties
 
 ```sh
 bazel run //:garf -- mirror \
@@ -62,7 +93,7 @@ bazel run //:garf -- mirror \
   --properties version=7.2.1
 ```
 
-### Use Raw URL Path Structure
+#### Use Raw URL Path Structure
 
 ```sh
 bazel run //:garf -- mirror \
@@ -71,7 +102,7 @@ bazel run //:garf -- mirror \
   --raw
 ```
 
-### Upload From Local File
+#### Upload From Local File
 
 ```sh
 bazel run //:garf -- mirror \
@@ -80,7 +111,7 @@ bazel run //:garf -- mirror \
   --destination tools-local
 ```
 
-### Extract and Upload From Zip
+#### Extract and Upload From Zip
 
 For zip files containing a single file (like executables packaged as zip):
 
@@ -92,6 +123,57 @@ bazel run //:garf -- mirror \
 ```
 
 This will extract the file (e.g., `bazel_nojdk-7.6.0-windows-x86_64.exe`) from the zip and upload it directly.
+
+### Cloudsmith Examples
+
+#### Basic Mirror to Cloudsmith
+
+```sh
+bazel run //:garf -- mirror \
+  --registry-type cloudsmith \
+  --source https://github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-7.2.1-linux-x86_64 \
+  --destination myorg/tools
+```
+
+#### Mirror with Custom Description
+
+```sh
+bazel run //:garf -- mirror \
+  --registry-type cloudsmith \
+  --source https://github.com/docker/compose/releases/download/v2.21.0/docker-compose-linux-x86_64 \
+  --destination myorg/docker-tools \
+  --summary "Docker Compose v2.21.0 for Linux x86_64"
+```
+
+#### Upload From Local File to Cloudsmith
+
+```sh
+bazel run //:garf -- mirror \
+  --registry-type cloudsmith \
+  --source https://github.com/kubernetes/kubernetes/releases/download/v1.28.2/kubectl \
+  --from-file /path/to/kubectl \
+  --destination myorg/k8s-tools
+```
+
+#### Extract Zip and Upload to Cloudsmith
+
+```sh
+bazel run //:garf -- mirror \
+  --registry-type cloudsmith \
+  --source https://github.com/mikefarah/yq/releases/download/v4.35.2/yq_windows_amd64.zip \
+  --destination myorg/tools \
+  --unzip
+```
+
+#### Dry Run with Cloudsmith
+
+```sh
+bazel run //:garf -- mirror \
+  --registry-type cloudsmith \
+  --source https://github.com/hashicorp/terraform/releases/download/v1.5.7/terraform_1.5.7_linux_amd64.zip \
+  --destination myorg/hashicorp-tools \
+  --dry-run
+```
 
 ### JFrog-to-JFrog Mirroring with Source Path Stripping
 
@@ -181,15 +263,17 @@ garf mirror [OPTIONS]
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--destination` | `-d` | JFrog repository destination (required) |
+| `--destination` | `-d` | Repository destination: JFrog repo name or Cloudsmith owner/repo (required) |
 | `--from-file` | `-f` | Local file path to upload (URL still used for coordinates) |
-| `--properties` | | Add properties to the artifact (can be used multiple times) |
+| `--properties` | | Add properties to the artifact (can be used multiple times, JFrog only) |
 | `--raw` | | Use the full URL path structure rather than parsed coordinates |
+| `--registry-type` | | Registry type: 'jfrog' (default) or 'cloudsmith' |
 | `--source` | `-s` | URL of the artifact to mirror (required) |
 | `--source-path-strip` | | Strip source path prefixes for JFrog-to-JFrog mirroring |
+| `--summary` | | Package summary/description (Cloudsmith only) |
 | `--unzip` | | Extract and upload the content from zip files with a single file |
 | `--dry-run` | | Perform a dry run without making actual changes |
-| `--dry-run-mode` | | Dry run mode: 'all' (skip all operations), 'upload' (skip only upload to Artifactory) |
+| `--dry-run-mode` | | Dry run mode: 'all' (skip all operations), 'upload' (skip only upload) |
 
 ## Path Organization
 
@@ -217,11 +301,22 @@ tools-local/github.com/bazelbuild/bazel/releases/download/7.2.1/bazel_nojdk-7.2.
 
 ## Environment Variables
 
+### JFrog Artifactory
+
 | Variable | Description |
 |----------|-------------|
 | `JFROG_URL` | URL of the JFrog Artifactory instance (required) |
 | `JFROG_USER` | Username for authentication (required) |
 | `JFROG_PASSWORD` | Password for authentication (required) |
+
+### Cloudsmith
+
+| Variable | Description |
+|----------|-------------|
+| `REGISTRY_TYPE` | Set to "cloudsmith" to use Cloudsmith (required) |
+| `REGISTRY_URL` | Cloudsmith API URL (default: https://api.cloudsmith.io) |
+| `REGISTRY_USER` | Cloudsmith username (required) |
+| `REGISTRY_PASSWORD` | Cloudsmith API key (required) |
 
 ## Building From Source
 
