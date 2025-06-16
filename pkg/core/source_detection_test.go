@@ -7,7 +7,22 @@ import (
 )
 
 func TestDetectSourceType(t *testing.T) {
-	tests := []struct {
+	tests := getSourceTypeDetectionTestCases()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runSourceTypeDetectionTest(t, tt)
+		})
+	}
+}
+
+func getSourceTypeDetectionTestCases() []struct {
+	name               string
+	sourceURL          string
+	sourcePathStrip    string
+	expectedSourceType string
+} {
+	return []struct {
 		name               string
 		sourceURL          string
 		sourcePathStrip    string
@@ -62,11 +77,15 @@ func TestDetectSourceType(t *testing.T) {
 			expectedSourceType: SourceTypeGitHub,
 		},
 	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := DetectSourceType(tt.sourceURL, tt.sourcePathStrip)
-			require.Equal(t, tt.expectedSourceType, result)
-		})
-	}
+func runSourceTypeDetectionTest(t *testing.T, tt struct {
+	name               string
+	sourceURL          string
+	sourcePathStrip    string
+	expectedSourceType string
+},
+) {
+	result := DetectSourceType(tt.sourceURL, tt.sourcePathStrip)
+	require.Equal(t, tt.expectedSourceType, result)
 }

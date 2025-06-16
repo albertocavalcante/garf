@@ -114,7 +114,6 @@ type MirrorRequest struct {
 
 	// Optional: Local file path to upload instead of downloading from source
 	// The source URL is still used for coordinate extraction
-	// TODO: This feature is not yet implemented
 	FromFile string
 
 	// Optional: Dry run mode - "all" skips everything, "upload" skips only upload

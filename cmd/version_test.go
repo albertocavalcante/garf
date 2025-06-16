@@ -23,7 +23,19 @@ type versionTestCase struct {
 func TestVersionCmd(t *testing.T) {
 	t.Parallel()
 
-	tests := []versionTestCase{
+	tests := getVersionTestCases()
+	testChannel := make(chan struct{}, 1)
+	testChannel <- struct{}{}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			runVersionTest(t, tc, testChannel)
+		})
+	}
+}
+
+func getVersionTestCases() []versionTestCase {
+	return []versionTestCase{
 		{
 			name:       "dev version",
 			version:    "dev",
@@ -45,51 +57,48 @@ Build Date: 2024-03-29
 `,
 		},
 	}
+}
 
-	// Create a channel to ensure tests run sequentially while allowing Go test parallelism
-	testChannel := make(chan struct{}, 1)
-	testChannel <- struct{}{} // Initialize with one token
+func runVersionTest(t *testing.T, tc versionTestCase, testChannel chan struct{}) {
+	t.Parallel()
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+	token := <-testChannel
+	defer func() { testChannel <- token }()
 
-			// Get token from channel to ensure only one test runs at a time
-			token := <-testChannel
-			defer func() { testChannel <- token }()
+	origVersion, origCommitHash, origBuildDate := saveOriginalVersionValues()
+	defer restoreOriginalVersionValues(origVersion, origCommitHash, origBuildDate)
 
-			// Save original values
-			versionMutex.Lock()
-			origVersion := cmd.Version
-			origCommitHash := cmd.CommitHash
-			origBuildDate := cmd.BuildDate
+	setTestVersionValues(tc)
 
-			// Set test values
-			cmd.Version = tc.version
-			cmd.CommitHash = tc.commitHash
-			cmd.BuildDate = tc.buildDate
-			versionMutex.Unlock()
+	var buf bytes.Buffer
 
-			// Create a buffer to capture output
-			var buf bytes.Buffer
+	command := cmd.NewVersionCmd()
+	command.SetOut(&buf)
 
-			// Use the actual NewVersionCmd
-			command := cmd.NewVersionCmd()
-			command.SetOut(&buf)
+	err := command.Execute()
+	require.NoError(t, err)
+	require.Equal(t, tc.expectedOutput, buf.String())
+}
 
-			// Execute the command
-			err := command.Execute()
-			require.NoError(t, err)
+func saveOriginalVersionValues() (string, string, string) {
+	versionMutex.Lock()
+	defer versionMutex.Unlock()
 
-			// Check output
-			require.Equal(t, tc.expectedOutput, buf.String())
+	return cmd.Version, cmd.CommitHash, cmd.BuildDate
+}
 
-			// Restore original values
-			versionMutex.Lock()
-			cmd.Version = origVersion
-			cmd.CommitHash = origCommitHash
-			cmd.BuildDate = origBuildDate
-			versionMutex.Unlock()
-		})
-	}
+func restoreOriginalVersionValues(version, commitHash, buildDate string) {
+	versionMutex.Lock()
+	defer versionMutex.Unlock()
+
+	cmd.Version, cmd.CommitHash, cmd.BuildDate = version, commitHash, buildDate
+}
+
+func setTestVersionValues(tc versionTestCase) {
+	versionMutex.Lock()
+	defer versionMutex.Unlock()
+
+	cmd.Version = tc.version
+	cmd.CommitHash = tc.commitHash
+	cmd.BuildDate = tc.buildDate
 }

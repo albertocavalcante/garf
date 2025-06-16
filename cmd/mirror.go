@@ -133,19 +133,25 @@ func setupMirrorFlags(cmd *cobra.Command, flags *MirrorFlags) {
 func setupBasicFlags(cmd *cobra.Command, flags *MirrorFlags) {
 	cmd.Flags().StringVarP(&flags.ConfigFile, "config", "c", "", "Path to configuration file")
 	cmd.Flags().StringVarP(&flags.Source, "source", "s", "", "GitHub Release URL to the artifact")
-	cmd.Flags().StringVarP(&flags.Destination, "destination", "d", "", "Artifacts destination (e.g. sandbox-generic-local)")
-	cmd.Flags().StringVarP(&flags.FromFile, "from-file", "f", "", "Skip Download. Upload from file and use URL to infer coordinates")
-	cmd.Flags().StringVar(&flags.SourcePathStrip, "source-path-strip", "", "Strip path prefixes from source URLs before processing")
+	cmd.Flags().StringVarP(&flags.Destination, "destination", "d", "",
+		"Artifacts destination (e.g. sandbox-generic-local)")
+	cmd.Flags().StringVarP(&flags.FromFile, "from-file", "f", "",
+		"Skip Download. Upload from file and use URL to infer coordinates")
+	cmd.Flags().StringVar(&flags.SourcePathStrip, "source-path-strip", "",
+		"Strip path prefixes from source URLs before processing")
 }
 
 // setupProcessingFlags configures artifact processing flags.
 func setupProcessingFlags(cmd *cobra.Command, flags *MirrorFlags) {
 	cmd.Flags().BoolVar(&flags.Raw, "raw", false, "Raw Mirror. Keep the original URL structure in the destination path")
 	cmd.Flags().StringArrayVar(&flags.Properties, "properties", []string{}, "Properties to attach to the artifact")
-	cmd.Flags().BoolVar(&flags.Unzip, "unzip", false, "Unzip and upload content if source is a zip file with a single file inside")
-	cmd.Flags().BoolVar(&flags.PreserveZipName, "preserve-zip-name", false, "Preserve the ZIP filename when extracting, replacing the ZIP extension with the extracted file's extension")
+	cmd.Flags().BoolVar(&flags.Unzip, "unzip", false,
+		"Unzip and upload content if source is a zip file with a single file inside")
+	cmd.Flags().BoolVar(&flags.PreserveZipName, "preserve-zip-name", false,
+		"Preserve the ZIP filename when extracting, replacing the ZIP extension with the extracted file's extension")
 	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "Perform a dry run without making actual changes")
-	cmd.Flags().StringVar(&flags.DryRunMode, "dry-run-mode", "all", "Dry run mode: 'all' (skip all operations), 'upload' (skip only upload to Artifactory)")
+	cmd.Flags().StringVar(&flags.DryRunMode, "dry-run-mode", "all",
+		"Dry run mode: 'all' (skip all operations), 'upload' (skip only upload to Artifactory)")
 }
 
 // setupJFrogFlags configures JFrog-specific flags.
@@ -379,17 +385,17 @@ func resolveCredentialsWithNetrc(flags *MirrorFlags, registryPassword, jfrogPass
 	resolver := config.NewCredentialsResolver()
 
 	registryConfig := &config.RegistryConfig{
-		URL:              flags.RegistryURL,
-		User:             flags.RegistryUser,
-		Password:         registryPassword,
-		Type:             flags.RegistryType,
+		URL:               flags.RegistryURL,
+		User:              flags.RegistryUser,
+		Password:          registryPassword,
+		Type:              flags.RegistryType,
 		PasswordFromStdin: false, // passwordFromStdin already handled
 	}
 
 	jfrogConfig := &config.JFrogConfig{
-		URL:              flags.JFrogURL,
-		User:             flags.JFrogUser,
-		Password:         jfrogPassword,
+		URL:               flags.JFrogURL,
+		User:              flags.JFrogUser,
+		Password:          jfrogPassword,
 		PasswordFromStdin: false, // passwordFromStdin already handled
 	}
 

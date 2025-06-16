@@ -7,7 +7,22 @@ import (
 )
 
 func TestValidateSourcePathStrip(t *testing.T) {
-	tests := []struct {
+	tests := getValidateSourcePathStripTestCases()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runValidateSourcePathStripTest(t, tt)
+		})
+	}
+}
+
+func getValidateSourcePathStripTestCases() []struct {
+	name            string
+	sourcePathStrip string
+	wantErr         bool
+	errMsg          string
+} {
+	return []struct {
 		name            string
 		sourcePathStrip string
 		wantErr         bool
@@ -69,17 +84,21 @@ func TestValidateSourcePathStrip(t *testing.T) {
 			wantErr:         false,
 		},
 	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateSourcePathStrip(tt.sourcePathStrip)
-			if tt.wantErr {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tt.errMsg)
-			} else {
-				require.NoError(t, err)
-			}
-		})
+func runValidateSourcePathStripTest(t *testing.T, tt struct {
+	name            string
+	sourcePathStrip string
+	wantErr         bool
+	errMsg          string
+},
+) {
+	err := ValidateSourcePathStrip(tt.sourcePathStrip)
+	if tt.wantErr {
+		require.Error(t, err)
+		require.Contains(t, err.Error(), tt.errMsg)
+	} else {
+		require.NoError(t, err)
 	}
 }
 

@@ -32,8 +32,22 @@ func TestNewCloudsmithDestination(t *testing.T) {
 
 func TestCloudsmithDestination_Validate(t *testing.T) {
 	logger := logrus.New()
+	tests := getCloudsmithValidationTestCases()
 
-	tests := []struct {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runCloudsmithValidationTest(t, logger, tt)
+		})
+	}
+}
+
+func getCloudsmithValidationTestCases() []struct {
+	name        string
+	config      CloudsmithConfig
+	expectError bool
+	errorMsg    string
+} {
+	return []struct {
 		name        string
 		config      CloudsmithConfig
 		expectError bool
@@ -134,23 +148,27 @@ func TestCloudsmithDestination_Validate(t *testing.T) {
 			errorMsg:    "cloudsmith destination path must be in the format 'owner/repo'",
 		},
 	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dest := &CloudsmithDestination{
-				config: tt.config,
-				logger: logger,
-			}
+func runCloudsmithValidationTest(t *testing.T, logger *logrus.Logger, tt struct {
+	name        string
+	config      CloudsmithConfig
+	expectError bool
+	errorMsg    string
+},
+) {
+	dest := &CloudsmithDestination{
+		config: tt.config,
+		logger: logger,
+	}
 
-			err := dest.Validate()
+	err := dest.Validate()
 
-			if tt.expectError {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tt.errorMsg)
-			} else {
-				require.NoError(t, err)
-			}
-		})
+	if tt.expectError {
+		require.Error(t, err)
+		require.Contains(t, err.Error(), tt.errorMsg)
+	} else {
+		require.NoError(t, err)
 	}
 }
 

@@ -313,7 +313,7 @@ func (m *DefaultMirror) uploadToDestinations(
 	logger.WithField("num_destinations", len(destinations)).Info("Starting concurrent uploads to destinations")
 
 	// Perform concurrent uploads
-	lastErr, destinationPath := m.performConcurrentUploads(ctx, destinations, readers, finalArtifact, opts, logger)
+	destinationPath, lastErr := m.performConcurrentUploads(ctx, destinations, readers, finalArtifact, opts, logger)
 
 	// Update result
 	result.Artifact = finalArtifact
@@ -352,7 +352,7 @@ func (m *DefaultMirror) performConcurrentUploads(
 	finalArtifact *core.Artifact,
 	opts *core.MirrorOptions,
 	logger *logrus.Entry,
-) (error, string) {
+) (string, error) {
 	var wg sync.WaitGroup
 
 	errChan := make(chan error, len(destinations))
@@ -394,7 +394,7 @@ func (m *DefaultMirror) performConcurrentUploads(
 		}
 	}
 
-	return lastErr, destinationPath
+	return destinationPath, lastErr
 }
 
 // UploadWorkerParams holds parameters for the upload worker.

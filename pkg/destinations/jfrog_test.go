@@ -474,7 +474,7 @@ func TestJFrogDestination_URLNormalization(t *testing.T) {
 	}
 }
 
-// Bug fix verification - essential for regression prevention.
+// Verification test for essential regression prevention.
 func TestJFrogDestination_BugFixVerification(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.DebugLevel)

@@ -79,7 +79,42 @@ func runConcurrentMirrorTest(t *testing.T, client *garf.Client, numGoroutines, n
 }
 
 func TestNewClient(t *testing.T) {
-	tests := []struct {
+	tests := getNewClientTestCases()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runNewClientTest(t, tt)
+		})
+	}
+}
+
+func getNewClientTestCases() []struct {
+	name        string
+	config      garf.Config
+	expectError bool
+	errorMsg    string
+} {
+	var tests []struct {
+		name        string
+		config      garf.Config
+		expectError bool
+		errorMsg    string
+	}
+
+	tests = append(tests, getValidConfigTestCases()...)
+	tests = append(tests, getInvalidConfigTestCases()...)
+	tests = append(tests, getCustomConfigTestCases()...)
+
+	return tests
+}
+
+func getValidConfigTestCases() []struct {
+	name        string
+	config      garf.Config
+	expectError bool
+	errorMsg    string
+} {
+	return []struct {
 		name        string
 		config      garf.Config
 		expectError bool
@@ -94,6 +129,21 @@ func TestNewClient(t *testing.T) {
 			},
 			expectError: false,
 		},
+	}
+}
+
+func getInvalidConfigTestCases() []struct {
+	name        string
+	config      garf.Config
+	expectError bool
+	errorMsg    string
+} {
+	return []struct {
+		name        string
+		config      garf.Config
+		expectError bool
+		errorMsg    string
+	}{
 		{
 			name: "missing JFrogURL",
 			config: garf.Config{
@@ -121,6 +171,21 @@ func TestNewClient(t *testing.T) {
 			expectError: true,
 			errorMsg:    "registry password is required",
 		},
+	}
+}
+
+func getCustomConfigTestCases() []struct {
+	name        string
+	config      garf.Config
+	expectError bool
+	errorMsg    string
+} {
+	return []struct {
+		name        string
+		config      garf.Config
+		expectError bool
+		errorMsg    string
+	}{
 		{
 			name: "config with custom logger",
 			config: garf.Config{
@@ -143,20 +208,24 @@ func TestNewClient(t *testing.T) {
 			expectError: false,
 		},
 	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client, err := garf.NewClient(tt.config)
+func runNewClientTest(t *testing.T, tt struct {
+	name        string
+	config      garf.Config
+	expectError bool
+	errorMsg    string
+},
+) {
+	client, err := garf.NewClient(tt.config)
 
-			if tt.expectError {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tt.errorMsg)
-				require.Nil(t, client)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, client)
-			}
-		})
+	if tt.expectError {
+		require.Error(t, err)
+		require.Contains(t, err.Error(), tt.errorMsg)
+		require.Nil(t, client)
+	} else {
+		require.NoError(t, err)
+		require.NotNil(t, client)
 	}
 }
 
@@ -344,7 +413,23 @@ func TestClient_SourcePathStripping(t *testing.T) {
 	client := createTestClient(t)
 	ctx := context.Background()
 
-	tests := []struct {
+	tests := getSourcePathStrippingTestCases()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runSourcePathStrippingTest(t, client, ctx, tt)
+		})
+	}
+}
+
+func getSourcePathStrippingTestCases() []struct {
+	name            string
+	sourceURL       string
+	sourcePathStrip string
+	destination     string
+	expectError     bool
+} {
+	return []struct {
 		name            string
 		sourceURL       string
 		sourcePathStrip string
@@ -387,23 +472,28 @@ func TestClient_SourcePathStripping(t *testing.T) {
 			expectError:     false,
 		},
 	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			request := createDryRunRequestWithStrip(tt.sourceURL, tt.destination, tt.sourcePathStrip)
+func runSourcePathStrippingTest(t *testing.T, client *garf.Client, ctx context.Context, tt struct {
+	name            string
+	sourceURL       string
+	sourcePathStrip string
+	destination     string
+	expectError     bool
+},
+) {
+	request := createDryRunRequestWithStrip(tt.sourceURL, tt.destination, tt.sourcePathStrip)
 
-			result, err := client.Mirror(ctx, request)
+	result, err := client.Mirror(ctx, request)
 
-			if tt.expectError {
-				require.Error(t, err)
-				require.Nil(t, result)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, result)
-				require.Equal(t, tt.sourceURL, result.Source)
-				require.NoError(t, result.Error)
-			}
-		})
+	if tt.expectError {
+		require.Error(t, err)
+		require.Nil(t, result)
+	} else {
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, tt.sourceURL, result.Source)
+		require.NoError(t, result.Error)
 	}
 }
 

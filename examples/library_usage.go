@@ -178,16 +178,34 @@ func envConfigExample() {
 func batchExample() {
 	fmt.Println("\n=== Batch Example ===")
 
-	client, err := garf.NewClient(garf.Config{
-		JFrogURL:      "https://mycompany.jfrog.io/artifactory",
-		JFrogUser:     "username",
-		JFrogPassword: "password",
-	})
+	client, err := createExampleClient()
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)
 	}
 
-	artifacts := []struct {
+	artifacts := getBatchArtifacts()
+	ctx := context.Background()
+	successCount := processBatchArtifacts(ctx, client, artifacts)
+
+	fmt.Printf("📊 Batch complete: %d/%d artifacts mirrored successfully\n", successCount, len(artifacts))
+}
+
+func createExampleClient() (*garf.Client, error) {
+	return garf.NewClient(garf.Config{
+		JFrogURL:      "https://mycompany.jfrog.io/artifactory",
+		JFrogUser:     "username",
+		JFrogPassword: "password",
+	})
+}
+
+func getBatchArtifacts() []struct {
+	source      string
+	destination string
+	properties  map[string]string
+	unzip       bool
+	description string
+} {
+	return []struct {
 		source      string
 		destination string
 		properties  map[string]string
@@ -216,51 +234,68 @@ func batchExample() {
 			description: "Windows ZIP (will be extracted)",
 		},
 	}
+}
 
-	ctx := context.Background()
+func processBatchArtifacts(ctx context.Context, client *garf.Client, artifacts []struct {
+	source      string
+	destination string
+	properties  map[string]string
+	unzip       bool
+	description string
+},
+) int {
 	successCount := 0
 
 	for i, artifact := range artifacts {
 		fmt.Printf("Mirroring artifact %d/%d: %s (%s)\n", i+1, len(artifacts), artifact.description, artifact.source)
 
-		result, err := client.Mirror(ctx, garf.MirrorRequest{
-			Source:      artifact.source,
-			Destination: artifact.destination,
-			Properties:  artifact.properties,
-			Unzip:       artifact.unzip,
-		})
-		if err != nil {
-			log.Printf("❌ Failed to mirror %s: %v", artifact.source, err)
-
-			continue
+		if processSingleArtifact(ctx, client, artifact) {
+			successCount++
 		}
-
-		if result.Error != nil {
-			log.Printf("❌ Mirror operation failed for %s: %v", artifact.source, result.Error)
-
-			continue
-		}
-
-		if artifact.unzip {
-			fmt.Printf("✓ Extracted and mirrored %s\n", result.DestinationPath)
-		} else {
-			fmt.Printf("✓ Mirrored %s\n", result.DestinationPath)
-		}
-
-		successCount++
 	}
 
-	fmt.Printf("📊 Batch complete: %d/%d artifacts mirrored successfully\n", successCount, len(artifacts))
+	return successCount
+}
+
+func processSingleArtifact(ctx context.Context, client *garf.Client, artifact struct {
+	source      string
+	destination string
+	properties  map[string]string
+	unzip       bool
+	description string
+},
+) bool {
+	result, err := client.Mirror(ctx, garf.MirrorRequest{
+		Source:      artifact.source,
+		Destination: artifact.destination,
+		Properties:  artifact.properties,
+		Unzip:       artifact.unzip,
+	})
+	if err != nil {
+		log.Printf("❌ Failed to mirror %s: %v", artifact.source, err)
+
+		return false
+	}
+
+	if result.Error != nil {
+		log.Printf("❌ Mirror operation failed for %s: %v", artifact.source, result.Error)
+
+		return false
+	}
+
+	if artifact.unzip {
+		fmt.Printf("✓ Extracted and mirrored %s\n", result.DestinationPath)
+	} else {
+		fmt.Printf("✓ Mirrored %s\n", result.DestinationPath)
+	}
+
+	return true
 }
 
 func errorHandlingExample() {
 	fmt.Println("\n=== Error Handling & Dry Run Example ===")
 
-	client, err := garf.NewClient(garf.Config{
-		JFrogURL:      "https://mycompany.jfrog.io/artifactory",
-		JFrogUser:     "username",
-		JFrogPassword: "password",
-	})
+	client, err := createExampleClient()
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)
 	}
@@ -268,10 +303,17 @@ func errorHandlingExample() {
 	ctx := context.Background()
 	source := "https://github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-7.2.1-windows-x86_64.exe"
 
-	// Step 1: Validate with dry run
+	if !validateWithDryRun(ctx, client, source) {
+		return
+	}
+
+	performActualMirror(ctx, client, source)
+}
+
+func validateWithDryRun(ctx context.Context, client *garf.Client, source string) bool {
 	fmt.Println("🔍 Validating with dry run...")
 
-	_, err = client.Mirror(ctx, garf.MirrorRequest{
+	_, err := client.Mirror(ctx, garf.MirrorRequest{
 		Source:      source,
 		Destination: "tools-local",
 		DryRun:      true,
@@ -280,16 +322,18 @@ func errorHandlingExample() {
 	if err != nil {
 		log.Printf("❌ Dry run validation failed: %v", err)
 
-		return
+		return false
 	}
 
 	fmt.Println("✓ Dry run validation passed")
 
-	// Step 2: Perform actual mirror with timeout
+	return true
+}
+
+func performActualMirror(ctx context.Context, client *garf.Client, source string) {
 	fmt.Println("⚡ Performing actual mirror...")
 
 	ctx, cancel := context.WithTimeout(ctx, mirrorTimeout)
-
 	defer cancel()
 
 	result, err := client.Mirror(ctx, garf.MirrorRequest{
@@ -301,7 +345,10 @@ func errorHandlingExample() {
 		},
 	})
 
-	// Comprehensive error handling
+	handleMirrorResult(ctx, result, err)
+}
+
+func handleMirrorResult(ctx context.Context, result *garf.MirrorResult, err error) {
 	switch {
 	case err != nil:
 		if ctx.Err() == context.DeadlineExceeded {
@@ -309,12 +356,8 @@ func errorHandlingExample() {
 		} else {
 			log.Printf("❌ Mirror failed: %v", err)
 		}
-
-		return
 	case result.Error != nil:
 		log.Printf("❌ Mirror operation failed: %v", result.Error)
-
-		return
 	default:
 		fmt.Printf("✅ Successfully mirrored to %s\n", result.DestinationPath)
 	}
@@ -323,66 +366,15 @@ func errorHandlingExample() {
 func sourcePathStrippingExample() {
 	fmt.Println("\n=== Source Path Stripping Example ===")
 
-	client, err := garf.NewClient(garf.Config{
-		JFrogURL:      os.Getenv("JFROG_URL"),
-		JFrogUser:     os.Getenv("JFROG_USER"),
-		JFrogPassword: os.Getenv("JFROG_PASSWORD"),
-	})
+	client, err := createEnvClient()
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)
 	}
 
 	ctx := context.Background()
 
-	// Example 1: Mirror from staging to production with prefix stripping
-	fmt.Println("📦 JFrog-to-JFrog mirroring with staging prefix strip")
-
-	result1, err := client.Mirror(ctx, garf.MirrorRequest{
-		Source:          "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
-		Destination:     "prod-repo",
-		SourcePathStrip: "artifactory.corp.net/staging/",
-		Properties:      map[string]string{"type": "binary", "platform": "windows"},
-		DryRun:          true, // Use dry run for demonstration
-		DryRunMode:      "all",
-	})
-	if err != nil {
-		log.Printf("Mirror failed: %v", err)
-
-		return
-	}
-
-	if result1.Error != nil {
-		log.Printf("Mirror operation failed: %v", result1.Error)
-
-		return
-	}
-
-	fmt.Printf("✓ Mirrored: %s -> %s\n", result1.Source, result1.DestinationPath)
-
-	// Example 2: Mirror with host-only stripping
-	fmt.Println("📦 JFrog-to-JFrog mirroring with host strip")
-
-	result2, err := client.Mirror(ctx, garf.MirrorRequest{
-		Source:          "https://artifactory.corp.net/repo/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
-		Destination:     "prod-repo",
-		SourcePathStrip: "artifactory.corp.net",
-		Properties:      map[string]string{"type": "binary", "platform": "windows"},
-		DryRun:          true, // Use dry run for demonstration
-		DryRunMode:      "all",
-	})
-	if err != nil {
-		log.Printf("Mirror failed: %v", err)
-
-		return
-	}
-
-	if result2.Error != nil {
-		log.Printf("Mirror operation failed: %v", result2.Error)
-
-		return
-	}
-
-	fmt.Printf("✓ Mirrored: %s -> %s\n", result2.Source, result2.DestinationPath)
+	demonstrateStagingMirror(ctx, client)
+	demonstrateHostOnlyMirror(ctx, client)
 
 	fmt.Println("💡 Key benefits of source path stripping:")
 	fmt.Println("   - Clean JFrog-to-JFrog mirroring without nested repository paths")
@@ -390,39 +382,93 @@ func sourcePathStrippingExample() {
 	fmt.Println("   - Maintains proper artifact organization and metadata")
 }
 
+func createEnvClient() (*garf.Client, error) {
+	return garf.NewClient(garf.Config{
+		JFrogURL:      os.Getenv("JFROG_URL"),
+		JFrogUser:     os.Getenv("JFROG_USER"),
+		JFrogPassword: os.Getenv("JFROG_PASSWORD"),
+	})
+}
+
+func demonstrateStagingMirror(ctx context.Context, client *garf.Client) {
+	fmt.Println("📦 JFrog-to-JFrog mirroring with staging prefix strip")
+
+	result, err := client.Mirror(ctx, garf.MirrorRequest{
+		Source:          "https://artifactory.corp.net/staging/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+		Destination:     "prod-repo",
+		SourcePathStrip: "artifactory.corp.net/staging/",
+		Properties:      map[string]string{"type": "binary", "platform": "windows"},
+		DryRun:          true,
+		DryRunMode:      "all",
+	})
+
+	handlePathStripResult(result, err)
+}
+
+func demonstrateHostOnlyMirror(ctx context.Context, client *garf.Client) {
+	fmt.Println("📦 JFrog-to-JFrog mirroring with host strip")
+
+	result, err := client.Mirror(ctx, garf.MirrorRequest{
+		Source:          "https://artifactory.corp.net/repo/github.com/bazelbuild/bazel/releases/download/v8.2.1/bazel-win.exe",
+		Destination:     "prod-repo",
+		SourcePathStrip: "artifactory.corp.net",
+		Properties:      map[string]string{"type": "binary", "platform": "windows"},
+		DryRun:          true,
+		DryRunMode:      "all",
+	})
+
+	handlePathStripResult(result, err)
+}
+
+func handlePathStripResult(result *garf.MirrorResult, err error) {
+	if err != nil {
+		log.Printf("Mirror failed: %v", err)
+
+		return
+	}
+
+	if result.Error != nil {
+		log.Printf("Mirror operation failed: %v", result.Error)
+
+		return
+	}
+
+	fmt.Printf("✓ Mirrored: %s -> %s\n", result.Source, result.DestinationPath)
+}
+
 func apiFeatureExample() {
 	fmt.Println("\n=== API Features Example ===")
 
-	client, err := garf.NewClient(garf.Config{
-		JFrogURL:      "https://mycompany.jfrog.io/artifactory",
-		JFrogUser:     "username",
-		JFrogPassword: "password",
-	})
+	client, err := createExampleClient()
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)
 	}
 
-	// Example 1: Source type detection for GitHub URLs
+	demonstrateSourceTypeDetection(client)
+	demonstrateSourceAvailability(client)
+	demonstrateRequestValidation(client)
+}
+
+func demonstrateSourceTypeDetection(client *garf.Client) {
 	fmt.Println("🔍 Detecting source types...")
 
 	githubURL := "https://github.com/bazelbuild/bazel/releases/download/7.2.1/bazel-7.2.1-windows-x86_64.exe"
 	sourceType := client.DetectSourceType(githubURL, "")
 	fmt.Printf("✓ GitHub URL '%s' detected as: %s\n", githubURL, sourceType)
 
-	// Example 2: Source type detection for generic HTTP URLs
 	genericURL := "https://releases.example.com/artifacts/v1.0.0/tool.tar.gz"
 	sourceType = client.DetectSourceType(genericURL, "")
 	fmt.Printf("✓ Generic URL '%s' detected as: %s\n", genericURL, sourceType)
 
-	// Example 3: Source type detection with path stripping
 	jfrogURL := "https://staging.jfrog.io/artifactory/staging-repo/github.com/owner/repo/releases/download/v1.0.0/artifact.zip"
 	pathStrip := "staging.jfrog.io/artifactory/staging-repo/"
 	sourceType = client.DetectSourceType(jfrogURL, pathStrip)
 	fmt.Printf("✓ JFrog URL with path strip detected as: %s\n", sourceType)
 	fmt.Printf("  Original: %s\n", jfrogURL)
 	fmt.Printf("  Strip: %s\n", pathStrip)
+}
 
-	// Example 4: Ensure source availability
+func demonstrateSourceAvailability(client *garf.Client) {
 	fmt.Println("🔍 Checking source availability...")
 
 	if err := client.EnsureSourceAvailable("github"); err != nil {
@@ -436,8 +482,9 @@ func apiFeatureExample() {
 	} else {
 		fmt.Println("✓ Generic source is available")
 	}
+}
 
-	// Example 5: Request validation
+func demonstrateRequestValidation(client *garf.Client) {
 	fmt.Println("🔍 Validating mirror requests...")
 
 	validRequest := garf.MirrorRequest{
@@ -454,11 +501,10 @@ func apiFeatureExample() {
 		fmt.Println("✓ Request validation passed")
 	}
 
-	// Example 6: Invalid request validation
 	invalidRequest := garf.MirrorRequest{
 		Source:          "https://github.com/example/repo/releases/download/v1.0/file.zip",
-		Destination:     "",                // Invalid: empty destination
-		SourcePathStrip: "../invalid/path", // Invalid: contains ..
+		Destination:     "",
+		SourcePathStrip: "../invalid/path",
 	}
 
 	if err := client.ValidateRequest(invalidRequest); err != nil {

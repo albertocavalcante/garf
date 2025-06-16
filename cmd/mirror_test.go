@@ -471,7 +471,22 @@ func TestSourcePathStripValidation(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.cleanup()
 
-	testCases := []struct {
+	testCases := getSourcePathStripTestCases()
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			runSourcePathStripTest(t, tc)
+		})
+	}
+}
+
+func getSourcePathStripTestCases() []struct {
+	name            string
+	sourcePathStrip string
+	wantErr         bool
+	errMsg          string
+} {
+	return []struct {
 		name            string
 		sourcePathStrip string
 		wantErr         bool
@@ -523,26 +538,30 @@ func TestSourcePathStripValidation(t *testing.T) {
 			errMsg:          "source path strip should not contain backslashes",
 		},
 	}
+}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			flags := &cmd.MirrorFlags{
-				Source:          "https://github.com/example/repo/releases/download/v1.0/file.zip",
-				Destination:     "test-repo",
-				SourcePathStrip: tc.sourcePathStrip,
-				JFrogURL:        "https://test.jfrog.io/artifactory",
-				JFrogUser:       "user",
-				JFrogPassword:   "password",
-			}
+func runSourcePathStripTest(t *testing.T, tc struct {
+	name            string
+	sourcePathStrip string
+	wantErr         bool
+	errMsg          string
+},
+) {
+	flags := &cmd.MirrorFlags{
+		Source:          "https://github.com/example/repo/releases/download/v1.0/file.zip",
+		Destination:     "test-repo",
+		SourcePathStrip: tc.sourcePathStrip,
+		JFrogURL:        "https://test.jfrog.io/artifactory",
+		JFrogUser:       "user",
+		JFrogPassword:   "password",
+	}
 
-			_, err := cmd.ValidateAndGetConfig(flags)
-			if tc.wantErr {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tc.errMsg)
-			} else {
-				require.NoError(t, err)
-			}
-		})
+	_, err := cmd.ValidateAndGetConfig(flags)
+	if tc.wantErr {
+		require.Error(t, err)
+		require.Contains(t, err.Error(), tc.errMsg)
+	} else {
+		require.NoError(t, err)
 	}
 }
 

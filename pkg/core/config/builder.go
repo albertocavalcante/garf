@@ -112,18 +112,18 @@ func (b *Builder) Build() (*Config, error) {
 
 // RegistryConfig holds registry configuration parameters.
 type RegistryConfig struct {
-	URL              string
-	User             string
-	Password         string
-	Type             string
+	URL               string
+	User              string
+	Password          string
+	Type              string
 	PasswordFromStdin bool
 }
 
 // JFrogConfig holds JFrog configuration parameters.
 type JFrogConfig struct {
-	URL              string
-	User             string
-	Password         string
+	URL               string
+	User              string
+	Password          string
 	PasswordFromStdin bool
 }
 
