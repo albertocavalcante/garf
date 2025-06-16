@@ -22,6 +22,7 @@ require (
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/bazelbuild/rules_go v0.54.1 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
+	github.com/cloudsmith-io/cloudsmith-api-go v0.0.47
 	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dsnet/compress v0.0.1 // indirect

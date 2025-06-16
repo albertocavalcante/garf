@@ -11,6 +11,7 @@ go_library(
     deps = [
         "//pkg/core",
         "//pkg/urlprocessor",
+        "@com_github_cloudsmith_io_cloudsmith_api_go//:cloudsmith-api-go",
         "@com_github_sirupsen_logrus//:logrus",
     ],
 )
