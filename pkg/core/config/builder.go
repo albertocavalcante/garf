@@ -110,6 +110,23 @@ func (b *Builder) Build() (*Config, error) {
 	return b.config, nil
 }
 
+// RegistryConfig holds registry configuration parameters.
+type RegistryConfig struct {
+	URL              string
+	User             string
+	Password         string
+	Type             string
+	PasswordFromStdin bool
+}
+
+// JFrogConfig holds JFrog configuration parameters.
+type JFrogConfig struct {
+	URL              string
+	User             string
+	Password         string
+	PasswordFromStdin bool
+}
+
 // CredentialsResolver handles credential resolution from various sources.
 type CredentialsResolver struct {
 	jfrogViper    *viper.Viper
@@ -133,28 +150,19 @@ func NewCredentialsResolver() *CredentialsResolver {
 }
 
 // ResolveCredentials resolves registry credentials from flags and environment.
-func (r *CredentialsResolver) ResolveCredentials(
-	registryURL, registryUser, registryPassword, registryType string,
-	registryPasswordFromStdin bool,
-	jfrogURL, jfrogUser, jfrogPassword string,
-	jfrogPasswordFromStdin bool,
-) (*RegistryCredentials, error) {
+func (r *CredentialsResolver) ResolveCredentials(registryConfig *RegistryConfig, jfrogConfig *JFrogConfig) (*RegistryCredentials, error) {
 	// Check if registry config is being used
-	if r.isRegistryConfigProvided(registryURL, registryUser, registryPassword, registryPasswordFromStdin, registryType) {
-		return r.resolveRegistryCredentials(registryURL, registryUser, registryPassword, registryType, registryPasswordFromStdin)
+	if r.isRegistryConfigProvided(registryConfig) {
+		return r.resolveRegistryCredentials(registryConfig)
 	}
 
 	// Fall back to JFrog credentials
-	return r.resolveJFrogCredentials(jfrogURL, jfrogUser, jfrogPassword, jfrogPasswordFromStdin)
+	return r.resolveJFrogCredentials(jfrogConfig)
 }
 
-func (r *CredentialsResolver) isRegistryConfigProvided(
-	registryURL, registryUser, registryPassword string,
-	registryPasswordFromStdin bool,
-	registryType string,
-) bool {
-	flagsSet := registryURL != "" || registryUser != "" || registryPassword != "" ||
-		registryPasswordFromStdin || registryType != ""
+func (r *CredentialsResolver) isRegistryConfigProvided(config *RegistryConfig) bool {
+	flagsSet := config.URL != "" || config.User != "" || config.Password != "" ||
+		config.PasswordFromStdin || config.Type != ""
 
 	envSet := r.registryViper.GetString("URL") != "" ||
 		r.registryViper.GetString("USER") != "" ||
@@ -163,21 +171,18 @@ func (r *CredentialsResolver) isRegistryConfigProvided(
 	return flagsSet || envSet
 }
 
-func (r *CredentialsResolver) resolveRegistryCredentials(
-	url, user, password, registryType string,
-	passwordFromStdin bool,
-) (*RegistryCredentials, error) {
+func (r *CredentialsResolver) resolveRegistryCredentials(config *RegistryConfig) (*RegistryCredentials, error) {
 	creds := &RegistryCredentials{
-		URL:  r.getStringValue(url, r.registryViper.GetString("URL")),
-		User: r.getStringValue(user, r.registryViper.GetString("USER")),
-		Type: r.getStringValue(registryType, "jfrog"), // Default to jfrog for backward compatibility
+		URL:  r.getStringValue(config.URL, r.registryViper.GetString("URL")),
+		User: r.getStringValue(config.User, r.registryViper.GetString("USER")),
+		Type: r.getStringValue(config.Type, "jfrog"), // Default to jfrog for backward compatibility
 	}
 
-	if passwordFromStdin {
+	if config.PasswordFromStdin {
 		// This would need to be handled by the caller since it requires IO
-		creds.Password = password // Will be set by caller
+		creds.Password = config.Password // Will be set by caller
 	} else {
-		creds.Password = r.getStringValue(password, r.registryViper.GetString("PASSWORD"))
+		creds.Password = r.getStringValue(config.Password, r.registryViper.GetString("PASSWORD"))
 	}
 
 	// Normalize URL
@@ -186,21 +191,18 @@ func (r *CredentialsResolver) resolveRegistryCredentials(
 	return creds, r.validateRegistryCredentials(creds)
 }
 
-func (r *CredentialsResolver) resolveJFrogCredentials(
-	url, user, password string,
-	passwordFromStdin bool,
-) (*RegistryCredentials, error) {
+func (r *CredentialsResolver) resolveJFrogCredentials(config *JFrogConfig) (*RegistryCredentials, error) {
 	creds := &RegistryCredentials{
-		URL:  r.getStringValue(url, r.jfrogViper.GetString("URL")),
-		User: r.getStringValue(user, r.jfrogViper.GetString("USER")),
+		URL:  r.getStringValue(config.URL, r.jfrogViper.GetString("URL")),
+		User: r.getStringValue(config.User, r.jfrogViper.GetString("USER")),
 		Type: "jfrog",
 	}
 
-	if passwordFromStdin {
+	if config.PasswordFromStdin {
 		// This would need to be handled by the caller since it requires IO
-		creds.Password = password // Will be set by caller
+		creds.Password = config.Password // Will be set by caller
 	} else {
-		creds.Password = r.getStringValue(password, r.jfrogViper.GetString("PASSWORD"))
+		creds.Password = r.getStringValue(config.Password, r.jfrogViper.GetString("PASSWORD"))
 	}
 
 	// Normalize URL

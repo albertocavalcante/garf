@@ -378,12 +378,22 @@ func resolvePasswordsFromStdin(flags *MirrorFlags) (string, string, error) {
 func resolveCredentialsWithNetrc(flags *MirrorFlags, registryPassword, jfrogPassword string) (*config.RegistryCredentials, error) {
 	resolver := config.NewCredentialsResolver()
 
-	creds, err := resolver.ResolveCredentials(
-		flags.RegistryURL, flags.RegistryUser, registryPassword, flags.RegistryType,
-		false, // passwordFromStdin already handled
-		flags.JFrogURL, flags.JFrogUser, jfrogPassword,
-		false, // passwordFromStdin already handled
-	)
+	registryConfig := &config.RegistryConfig{
+		URL:              flags.RegistryURL,
+		User:             flags.RegistryUser,
+		Password:         registryPassword,
+		Type:             flags.RegistryType,
+		PasswordFromStdin: false, // passwordFromStdin already handled
+	}
+
+	jfrogConfig := &config.JFrogConfig{
+		URL:              flags.JFrogURL,
+		User:             flags.JFrogUser,
+		Password:         jfrogPassword,
+		PasswordFromStdin: false, // passwordFromStdin already handled
+	}
+
+	creds, err := resolver.ResolveCredentials(registryConfig, jfrogConfig)
 
 	if err != nil && creds != nil && creds.Type == "jfrog" && (creds.User == "" || creds.Password == "") {
 		return tryNetrcFallback(creds, err)
