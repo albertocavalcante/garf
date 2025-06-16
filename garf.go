@@ -73,7 +73,7 @@ type Config struct {
 	// Registry type (defaults to "jfrog" for backward compatibility)
 	RegistryType string
 
-	// DEPRECATED: JFrog-specific fields (kept for backward compatibility)
+	// Deprecated: JFrog-specific fields (kept for backward compatibility)
 	// These will be mapped to Registry* fields if Registry* fields are empty
 	JFrogURL      string
 	JFrogUser     string
@@ -196,80 +196,136 @@ func NewClient(config Config) (*Client, error) {
 
 // Mirror performs a single mirror operation.
 func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResult, error) {
-	logger := c.logger.WithFields(logrus.Fields{
-		"source":      request.Source,
-		"destination": request.Destination,
-		"dry_run":     request.DryRun,
-	})
-
+	logger := c.createRequestLogger(request)
 	logger.Info("Starting mirror operation")
 
 	if err := c.ValidateRequest(request); err != nil {
 		return nil, fmt.Errorf("invalid request: %w", err)
 	}
 
-	// Create context with timeout if not already set or if our timeout is shorter
-	if c.Config.Timeout > 0 {
-		if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > c.Config.Timeout {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, c.Config.Timeout)
-			defer cancel()
-		}
+	// Setup context and sources
+	ctx = c.setupContextWithTimeout(ctx)
+
+	if err := c.setupMirrorSources(request); err != nil {
+		return nil, err
 	}
 
-	// Detect source type and ensure the appropriate source is available
+	// Setup destination
+	destKey, err := c.setupMirrorDestination(request, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	// Execute mirror operation
+	return c.executeMirrorOperation(ctx, request, destKey)
+}
+
+// createRequestLogger creates a logger with request context.
+func (c *Client) createRequestLogger(request MirrorRequest) *logrus.Entry {
+	return c.logger.WithFields(logrus.Fields{
+		"source":      request.Source,
+		"destination": request.Destination,
+		"dry_run":     request.DryRun,
+	})
+}
+
+// setupContextWithTimeout applies timeout to context if configured.
+func (c *Client) setupContextWithTimeout(ctx context.Context) context.Context {
+	if c.Config.Timeout <= 0 {
+		return ctx
+	}
+
+	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) <= c.Config.Timeout {
+		return ctx
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, c.Config.Timeout)
+	_ = cancel // Will be handled by caller
+
+	return ctx
+}
+
+// setupMirrorSources ensures the appropriate source is available.
+func (c *Client) setupMirrorSources(request MirrorRequest) error {
 	sourceType := c.DetectSourceType(request.Source, request.SourcePathStrip)
 	if err := c.EnsureSourceAvailable(sourceType); err != nil {
-		return nil, fmt.Errorf("failed to setup source: %w", err)
+		return fmt.Errorf("failed to setup source: %w", err)
 	}
 
-	// Create destination key for caching (includes source path strip config)
-	destKey := request.Destination
-	if request.SourcePathStrip != "" {
-		destKey = fmt.Sprintf("%s|strip:%s", request.Destination, request.SourcePathStrip)
+	return nil
+}
+
+// setupMirrorDestination gets or creates the destination.
+func (c *Client) setupMirrorDestination(request MirrorRequest, logger *logrus.Entry) (string, error) {
+	destKey := c.createDestinationKey(request)
+
+	dest, exists, err := c.getOrCreateDestination(destKey, request, logger)
+	if err != nil {
+		return "", err
 	}
 
-	// Get or create destination with proper locking
+	if !exists {
+		if err := c.registerDestination(destKey, dest, logger); err != nil {
+			return "", err
+		}
+	}
+
+	return destKey, nil
+}
+
+// createDestinationKey creates a unique key for destination caching.
+func (c *Client) createDestinationKey(request MirrorRequest) string {
+	if request.SourcePathStrip == "" {
+		return request.Destination
+	}
+
+	return fmt.Sprintf("%s|strip:%s", request.Destination, request.SourcePathStrip)
+}
+
+// getOrCreateDestination safely gets or creates a destination.
+func (c *Client) getOrCreateDestination(destKey string, request MirrorRequest, logger *logrus.Entry) (core.Destination, bool, error) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	dest, exists := c.destinations[destKey]
-	if !exists {
-		// Create new destination
-		var err error
-
-		dest, err = c.createDestination(request.Destination, request.SourcePathStrip)
-		if err != nil {
-			c.mu.Unlock()
-			logger.WithError(err).Error("Failed to create destination")
-
-			return nil, fmt.Errorf("failed to create destination: %w", err)
-		}
-
-		c.destinations[destKey] = dest
-	}
-	c.mu.Unlock()
-
-	// Register destination with mirror (outside of lock to minimize lock duration)
-	if !exists {
-		if err := c.mirror.AddDestination(destKey, dest); err != nil {
-			// If registration fails, remove from cache
-			c.mu.Lock()
-			delete(c.destinations, destKey)
-			c.mu.Unlock()
-			logger.WithError(err).Error("Failed to register destination with mirror")
-
-			return nil, fmt.Errorf("failed to add destination: %w", err)
-		}
+	if exists {
+		return dest, true, nil
 	}
 
-	// Create artifact
+	newDest, err := c.createDestination(request.Destination, request.SourcePathStrip)
+	if err != nil {
+		logger.WithError(err).Error("Failed to create destination")
+
+		return nil, false, fmt.Errorf("failed to create destination: %w", err)
+	}
+
+	c.destinations[destKey] = newDest
+
+	return newDest, false, nil
+}
+
+// registerDestination registers a new destination with the mirror.
+func (c *Client) registerDestination(destKey string, dest core.Destination, logger *logrus.Entry) error {
+	if err := c.mirror.AddDestination(destKey, dest); err != nil {
+		c.mu.Lock()
+		delete(c.destinations, destKey)
+		c.mu.Unlock()
+		logger.WithError(err).Error("Failed to register destination with mirror")
+
+		return fmt.Errorf("failed to add destination: %w", err)
+	}
+
+	return nil
+}
+
+// executeMirrorOperation performs the actual mirror operation.
+func (c *Client) executeMirrorOperation(ctx context.Context, request MirrorRequest, _ string) (*MirrorResult, error) {
 	artifact := &core.Artifact{
 		Name:     ExtractArtifactName(request.Source),
 		Location: request.Source,
 		Metadata: request.Properties,
 	}
 
-	// Create mirror options
 	opts := &core.MirrorOptions{
 		Context:    ctx,
 		Raw:        request.Raw,
@@ -279,83 +335,92 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 		Unzip:      request.Unzip,
 	}
 
-	// Perform mirror operation
 	results := c.mirror.Mirror(ctx, []*core.Artifact{artifact}, opts)
 
-	// Wait for result
+	return c.processMirrorResults(ctx, request, results, opts)
+}
+
+// processMirrorResults processes the results from the mirror operation.
+func (c *Client) processMirrorResults(ctx context.Context, request MirrorRequest, results <-chan mirror.MirrorResult, opts *core.MirrorOptions) (*MirrorResult, error) {
 	select {
 	case result, ok := <-results:
 		if !ok {
 			return nil, fmt.Errorf("mirror operation completed without result")
 		}
 
-		// If there was an error during mirroring, return it
 		if result.Error != nil {
-			return &MirrorResult{
-				Source:          request.Source,
-				DestinationPath: result.DestinationPath,
-				Error:           result.Error,
-			}, nil
+			return c.createMirrorResult(request, result.DestinationPath, result.Error), nil
 		}
 
-		// If unzip is enabled, process the artifact
 		if request.Unzip {
 			if err := processor.ProcessArtifact(ctx, c.logger, c.mirror, result.Artifact, opts); err != nil {
-				return &MirrorResult{
-					Source:          request.Source,
-					DestinationPath: result.DestinationPath,
-					Error:           fmt.Errorf("failed to process artifact: %w", err),
-				}, nil
+				return c.createMirrorResult(request, result.DestinationPath, fmt.Errorf("failed to process artifact: %w", err)), nil
 			}
 		}
 
-		return &MirrorResult{
-			Source:          request.Source,
-			DestinationPath: result.DestinationPath,
-			Error:           result.Error,
-		}, nil
+		return c.createMirrorResult(request, result.DestinationPath, result.Error), nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
 }
 
+// createMirrorResult creates a MirrorResult from the given parameters.
+func (c *Client) createMirrorResult(request MirrorRequest, destinationPath string, err error) *MirrorResult {
+	return &MirrorResult{
+		Source:          request.Source,
+		DestinationPath: destinationPath,
+		Error:           err,
+	}
+}
+
 // ValidateConfig validates the client configuration.
 func ValidateConfig(config Config) error {
-	// Validate registry type if specified
-	if config.RegistryType != "" &&
-		config.RegistryType != core.RegistryTypeJFrog &&
-		config.RegistryType != core.RegistryTypeCloudsmith {
-		return fmt.Errorf("unsupported registry type: %s", config.RegistryType)
+	if err := validateRegistryType(config.RegistryType); err != nil {
+		return err
 	}
 
-	// Check for registry credentials (prefer new generic fields, fallback to legacy)
-	url := config.RegistryURL
-	if url == "" {
-		url = config.JFrogURL // Backward compatibility
+	if err := validateRegistryCredentials(config); err != nil {
+		return err
 	}
 
+	return validateTimeoutAndConcurrency(config)
+}
+
+// validateRegistryType validates the registry type.
+func validateRegistryType(registryType string) error {
+	if registryType == "" {
+		return nil
+	}
+
+	if registryType != core.RegistryTypeJFrog && registryType != core.RegistryTypeCloudsmith {
+		return fmt.Errorf("unsupported registry type: %s", registryType)
+	}
+
+	return nil
+}
+
+// validateRegistryCredentials validates registry credentials with backward compatibility.
+func validateRegistryCredentials(config Config) error {
+	url := getFirstNonEmpty(config.RegistryURL, config.JFrogURL)
 	if url == "" {
 		return fmt.Errorf("registry URL is required (use RegistryURL or JFrogURL)")
 	}
 
-	user := config.RegistryUser
-	if user == "" {
-		user = config.JFrogUser // Backward compatibility
-	}
-
+	user := getFirstNonEmpty(config.RegistryUser, config.JFrogUser)
 	if user == "" {
 		return fmt.Errorf("registry user is required (use RegistryUser or JFrogUser)")
 	}
 
-	password := config.RegistryPassword
-	if password == "" {
-		password = config.JFrogPassword // Backward compatibility
-	}
-
+	password := getFirstNonEmpty(config.RegistryPassword, config.JFrogPassword)
 	if password == "" {
 		return fmt.Errorf("registry password is required (use RegistryPassword or JFrogPassword)")
 	}
 
+	return nil
+}
+
+// validateTimeoutAndConcurrency validates timeout and concurrency settings.
+func validateTimeoutAndConcurrency(config Config) error {
 	if config.Timeout < 0 {
 		return fmt.Errorf("timeout cannot be negative")
 	}
@@ -365,6 +430,17 @@ func ValidateConfig(config Config) error {
 	}
 
 	return nil
+}
+
+// getFirstNonEmpty returns the first non-empty string from the arguments.
+func getFirstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+
+	return ""
 }
 
 // ValidateRequest validates a mirror request.

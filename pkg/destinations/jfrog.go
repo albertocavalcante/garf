@@ -452,21 +452,22 @@ func (d *JFrogDestination) normalizeJFrogURL(rawURL string) (string, error) {
 	// Handle the path component
 	path := u.Path
 
-	// If path is empty or just "/", add /artifactory
-	if path == "" || path == "/" {
+	// Normalize path to ensure /artifactory is present
+	switch {
+	case path == "" || path == "/":
 		u.Path = "/artifactory"
 		d.logger.WithFields(logrus.Fields{
 			"original_url":   rawURL,
 			"normalized_url": u.String(),
 		}).Debug("Added /artifactory to JFrog URL")
-	} else if !strings.Contains(path, "/artifactory") {
+	case !strings.Contains(path, "/artifactory"):
 		// If path doesn't contain /artifactory, append it
 		u.Path = strings.TrimSuffix(path, "/") + "/artifactory"
 		d.logger.WithFields(logrus.Fields{
 			"original_url":   rawURL,
 			"normalized_url": u.String(),
 		}).Debug("Appended /artifactory to existing JFrog URL path")
-	} else {
+	default:
 		// Path already contains /artifactory, keep as-is
 		d.logger.WithFields(logrus.Fields{
 			"url": rawURL,

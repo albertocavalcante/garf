@@ -573,145 +573,84 @@ func TestClient_RaceConditionWithDifferentSourcePathStrip(t *testing.T) {
 	require.True(t, client.IsCachedDestination("test-repo"))
 }
 
+type validateRequestTestCase struct {
+	name        string
+	request     garf.MirrorRequest
+	expectError bool
+	errorMsg    string
+}
+
 func TestClient_ValidateRequest(t *testing.T) {
 	client := createTestClient(t)
-
-	tests := []struct {
-		name        string
-		request     garf.MirrorRequest
-		expectError bool
-		errorMsg    string
-	}{
-		{
-			name: "valid request",
-			request: garf.MirrorRequest{
-				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination: "my-repo",
-			},
-			expectError: false,
-		},
-		{
-			name: "missing source",
-			request: garf.MirrorRequest{
-				Destination: "my-repo",
-			},
-			expectError: true,
-			errorMsg:    "source is required",
-		},
-		{
-			name: "missing destination",
-			request: garf.MirrorRequest{
-				Source: "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-			},
-			expectError: true,
-			errorMsg:    "destination is required",
-		},
-		{
-			name: "valid dry run with mode",
-			request: garf.MirrorRequest{
-				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination: "my-repo",
-				DryRun:      true,
-				DryRunMode:  "upload",
-			},
-			expectError: false,
-		},
-		{
-			name: "invalid dry run mode",
-			request: garf.MirrorRequest{
-				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination: "my-repo",
-				DryRun:      true,
-				DryRunMode:  "invalid",
-			},
-			expectError: true,
-			errorMsg:    "invalid dry run mode",
-		},
-		{
-			name: "request with properties",
-			request: garf.MirrorRequest{
-				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination: "my-repo",
-				Properties:  map[string]string{"type": "binary", "platform": "linux"},
-			},
-			expectError: false,
-		},
-		{
-			name: "request with all options",
-			request: garf.MirrorRequest{
-				Source:      "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination: "my-repo",
-				Properties:  map[string]string{"type": "binary"},
-				Raw:         true,
-				Unzip:       true,
-				FromFile:    "/path/to/local/file",
-				DryRun:      true,
-				DryRunMode:  "all",
-			},
-			expectError: false,
-		},
-		{
-			name: "request with source path stripping",
-			request: garf.MirrorRequest{
-				Source:          "https://artifactory.corp.net/staging/github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination:     "my-repo",
-				SourcePathStrip: "artifactory.corp.net/staging/",
-				Properties:      map[string]string{"type": "binary"},
-			},
-			expectError: false,
-		},
-		{
-			name: "valid source path strip",
-			request: garf.MirrorRequest{
-				Source:          "https://artifactory.corp.net/staging/github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination:     "my-repo",
-				SourcePathStrip: "artifactory.corp.net/staging/",
-			},
-			expectError: false,
-		},
-		{
-			name: "source path strip with path traversal",
-			request: garf.MirrorRequest{
-				Source:          "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination:     "my-repo",
-				SourcePathStrip: "../../malicious/path",
-			},
-			expectError: true,
-			errorMsg:    "source path strip cannot contain '..' for security reasons",
-		},
-		{
-			name: "source path strip with http scheme",
-			request: garf.MirrorRequest{
-				Source:          "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination:     "my-repo",
-				SourcePathStrip: "http://artifactory.corp.net/staging/",
-			},
-			expectError: true,
-			errorMsg:    "source path strip should not include the URL scheme",
-		},
-		{
-			name: "source path strip with https scheme",
-			request: garf.MirrorRequest{
-				Source:          "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
-				Destination:     "my-repo",
-				SourcePathStrip: "https://artifactory.corp.net/staging/",
-			},
-			expectError: true,
-			errorMsg:    "source path strip should not include the URL scheme",
-		},
-	}
+	tests := getValidateRequestTestCases()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := client.ValidateRequest(tt.request)
-
-			if tt.expectError {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tt.errorMsg)
-			} else {
-				require.NoError(t, err)
-			}
+			runValidateRequestTestCase(t, client, tt)
 		})
+	}
+}
+
+func getValidateRequestTestCases() []validateRequestTestCase {
+	return []validateRequestTestCase{
+		{
+			name: "valid request", request: garf.MirrorRequest{
+				Source: "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip", Destination: "my-repo",
+			},
+			expectError: false,
+		},
+		{name: "missing source", request: garf.MirrorRequest{Destination: "my-repo"}, expectError: true, errorMsg: "source is required"},
+		{name: "missing destination", request: garf.MirrorRequest{
+			Source: "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+		}, expectError: true, errorMsg: "destination is required"},
+		{name: "valid dry run with mode", request: garf.MirrorRequest{
+			Source: "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip", Destination: "my-repo",
+			DryRun: true, DryRunMode: "upload",
+		}, expectError: false},
+		{name: "invalid dry run mode", request: garf.MirrorRequest{
+			Source: "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip", Destination: "my-repo",
+			DryRun: true, DryRunMode: "invalid",
+		}, expectError: true, errorMsg: "invalid dry run mode"},
+		{name: "request with properties", request: garf.MirrorRequest{
+			Source: "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip", Destination: "my-repo",
+			Properties: map[string]string{"type": "binary", "platform": "linux"},
+		}, expectError: false},
+		{name: "request with all options", request: garf.MirrorRequest{
+			Source: "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip", Destination: "my-repo",
+			Properties: map[string]string{"type": "binary"}, Raw: true, Unzip: true,
+			FromFile: "/path/to/local/file", DryRun: true, DryRunMode: "all",
+		}, expectError: false},
+		{name: "request with source path stripping", request: garf.MirrorRequest{
+			Source:      "https://artifactory.corp.net/staging/github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+			Destination: "my-repo", SourcePathStrip: "artifactory.corp.net/staging/",
+			Properties: map[string]string{"type": "binary"},
+		}, expectError: false},
+		{name: "valid source path strip", request: garf.MirrorRequest{
+			Source:      "https://artifactory.corp.net/staging/github.com/owner/repo/releases/download/v1.0.0/artifact.zip",
+			Destination: "my-repo", SourcePathStrip: "artifactory.corp.net/staging/",
+		}, expectError: false},
+		{name: "source path strip with path traversal", request: garf.MirrorRequest{
+			Source: "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip", Destination: "my-repo",
+			SourcePathStrip: "../../malicious/path",
+		}, expectError: true, errorMsg: "source path strip cannot contain '..' for security reasons"},
+		{name: "source path strip with http scheme", request: garf.MirrorRequest{
+			Source: "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip", Destination: "my-repo",
+			SourcePathStrip: "http://artifactory.corp.net/staging/",
+		}, expectError: true, errorMsg: "source path strip should not include the URL scheme"},
+		{name: "source path strip with https scheme", request: garf.MirrorRequest{
+			Source: "https://github.com/owner/repo/releases/download/v1.0.0/artifact.zip", Destination: "my-repo",
+			SourcePathStrip: "https://artifactory.corp.net/staging/",
+		}, expectError: true, errorMsg: "source path strip should not include the URL scheme"},
+	}
+}
+
+func runValidateRequestTestCase(t *testing.T, client *garf.Client, tt validateRequestTestCase) {
+	err := client.ValidateRequest(tt.request)
+	if tt.expectError {
+		require.Error(t, err)
+		require.Contains(t, err.Error(), tt.errorMsg)
+	} else {
+		require.NoError(t, err)
 	}
 }
 

@@ -2,11 +2,15 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "config",
-    srcs = ["config.go"],
+    srcs = [
+        "builder.go",
+        "config.go",
+    ],
     importpath = "github.com/albertocavalcante/garf/pkg/core/config",
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/core",
+        "@com_github_spf13_viper//:viper",
         "@in_gopkg_yaml_v3//:yaml_v3",
     ],
 )

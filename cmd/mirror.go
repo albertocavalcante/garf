@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/albertocavalcante/garf/pkg/core"
@@ -124,165 +123,106 @@ Examples:
 
 // setupMirrorFlags configures all flags for the mirror command.
 func setupMirrorFlags(cmd *cobra.Command, flags *MirrorFlags) {
+	setupBasicFlags(cmd, flags)
+	setupProcessingFlags(cmd, flags)
+	setupJFrogFlags(cmd, flags)
+	setupRegistryFlags(cmd, flags)
+}
+
+// setupBasicFlags configures basic mirror flags.
+func setupBasicFlags(cmd *cobra.Command, flags *MirrorFlags) {
 	cmd.Flags().StringVarP(&flags.ConfigFile, "config", "c", "", "Path to configuration file")
 	cmd.Flags().StringVarP(&flags.Source, "source", "s", "", "GitHub Release URL to the artifact")
-	cmd.Flags().StringVarP(
-		&flags.Destination,
-		"destination",
-		"d",
-		"",
-		"Artifacts destination (e.g. sandbox-generic-local)",
-	)
-	cmd.Flags().StringVarP(
-		&flags.FromFile,
-		"from-file",
-		"f",
-		"",
-		"Skip Download. Upload from file and use URL to infer coordinates",
-	)
-	cmd.Flags().BoolVar(&flags.Raw, "raw", false, "Raw Mirror. Keep the original URL structure in the destination path")
-	cmd.Flags().StringArrayVar(
-		&flags.Properties,
-		"properties",
-		[]string{},
-		"Properties to attach to the artifact (e.g. type=toolchain platform=windows)",
-	)
-	cmd.Flags().BoolVar(
-		&flags.Unzip,
-		"unzip",
-		false,
-		"Unzip and upload content if source is a zip file with a single file inside",
-	)
-	cmd.Flags().BoolVar(
-		&flags.PreserveZipName,
-		"preserve-zip-name",
-		false,
-		"Preserve the ZIP filename when extracting, replacing the ZIP extension with the extracted file's extension",
-	)
-	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "Perform a dry run without making actual changes")
-	cmd.Flags().StringVar(
-		&flags.DryRunMode,
-		"dry-run-mode",
-		"all",
-		"Dry run mode: 'all' (skip all operations), 'upload' (skip only upload to Artifactory)",
-	)
-	cmd.Flags().StringVar(
-		&flags.JFrogURL,
-		"jfrog-url",
-		"",
-		"JFrog Artifactory URL (can also be set via JFROG_URL env var)",
-	)
-	cmd.Flags().StringVar(
-		&flags.JFrogUser,
-		"jfrog-user",
-		"",
-		"JFrog Artifactory username (can also be set via JFROG_USER env var)",
-	)
-	cmd.Flags().StringVar(
-		&flags.JFrogPassword,
-		"jfrog-password",
-		"",
-		"JFrog Artifactory password (can also be set via JFROG_PASSWORD env var)",
-	)
-	cmd.Flags().BoolVar(
-		&flags.JFrogPasswordFromStdin,
-		"jfrog-password-stdin",
-		false,
-		"Read JFrog Artifactory password from stdin (more secure than --jfrog-password)",
-	)
-	cmd.Flags().StringVar(
-		&flags.SourcePathStrip,
-		"source-path-strip",
-		"",
-		"Strip path prefixes from source URLs before processing (e.g., 'artifactory.corp.net/staging/' for JFrog-hosted artifacts)",
-	)
+	cmd.Flags().StringVarP(&flags.Destination, "destination", "d", "", "Artifacts destination (e.g. sandbox-generic-local)")
+	cmd.Flags().StringVarP(&flags.FromFile, "from-file", "f", "", "Skip Download. Upload from file and use URL to infer coordinates")
+	cmd.Flags().StringVar(&flags.SourcePathStrip, "source-path-strip", "", "Strip path prefixes from source URLs before processing")
+}
 
-	// New generic registry flags (preferred for new usage)
-	cmd.Flags().StringVar(
-		&flags.RegistryType,
-		"registry-type",
-		"jfrog", // Default to jfrog for backward compatibility
-		"Registry type: 'jfrog' or 'cloudsmith'",
-	)
-	cmd.Flags().StringVar(
-		&flags.RegistryURL,
-		"registry-url",
-		"",
-		"Registry URL (can also be set via REGISTRY_URL env var)",
-	)
-	cmd.Flags().StringVar(
-		&flags.RegistryUser,
-		"registry-user",
-		"",
-		"Registry username (can also be set via REGISTRY_USER env var)",
-	)
-	cmd.Flags().StringVar(
-		&flags.RegistryPassword,
-		"registry-password",
-		"",
-		"Registry password (can also be set via REGISTRY_PASSWORD env var)",
-	)
-	cmd.Flags().BoolVar(
-		&flags.RegistryPasswordFromStdin,
-		"registry-password-stdin",
-		false,
-		"Read registry password from stdin (more secure than --registry-password)",
-	)
+// setupProcessingFlags configures artifact processing flags.
+func setupProcessingFlags(cmd *cobra.Command, flags *MirrorFlags) {
+	cmd.Flags().BoolVar(&flags.Raw, "raw", false, "Raw Mirror. Keep the original URL structure in the destination path")
+	cmd.Flags().StringArrayVar(&flags.Properties, "properties", []string{}, "Properties to attach to the artifact")
+	cmd.Flags().BoolVar(&flags.Unzip, "unzip", false, "Unzip and upload content if source is a zip file with a single file inside")
+	cmd.Flags().BoolVar(&flags.PreserveZipName, "preserve-zip-name", false, "Preserve the ZIP filename when extracting")
+	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "Perform a dry run without making actual changes")
+	cmd.Flags().StringVar(&flags.DryRunMode, "dry-run-mode", "all", "Dry run mode: 'all' or 'upload'")
+}
+
+// setupJFrogFlags configures JFrog-specific flags.
+func setupJFrogFlags(cmd *cobra.Command, flags *MirrorFlags) {
+	cmd.Flags().StringVar(&flags.JFrogURL, "jfrog-url", "", "JFrog Artifactory URL (can also be set via JFROG_URL env var)")
+	cmd.Flags().StringVar(&flags.JFrogUser, "jfrog-user", "", "JFrog Artifactory username (can also be set via JFROG_USER env var)")
+	cmd.Flags().StringVar(&flags.JFrogPassword, "jfrog-password", "", "JFrog Artifactory password (can also be set via JFROG_PASSWORD env var)")
+	cmd.Flags().BoolVar(&flags.JFrogPasswordFromStdin, "jfrog-password-stdin", false, "Read JFrog password from stdin")
+}
+
+// setupRegistryFlags configures generic registry flags.
+func setupRegistryFlags(cmd *cobra.Command, flags *MirrorFlags) {
+	cmd.Flags().StringVar(&flags.RegistryType, "registry-type", "jfrog", "Registry type: 'jfrog' or 'cloudsmith'")
+	cmd.Flags().StringVar(&flags.RegistryURL, "registry-url", "", "Registry URL (can also be set via REGISTRY_URL env var)")
+	cmd.Flags().StringVar(&flags.RegistryUser, "registry-user", "", "Registry username (can also be set via REGISTRY_USER env var)")
+	cmd.Flags().StringVar(&flags.RegistryPassword, "registry-password", "", "Registry password (can also be set via REGISTRY_PASSWORD env var)")
+	cmd.Flags().BoolVar(&flags.RegistryPasswordFromStdin, "registry-password-stdin", false, "Read registry password from stdin")
 }
 
 // runMirror executes the mirror operation.
 func runMirror(flags *MirrorFlags) error {
-	// Validate flags
-	if err := validateFlags(flags); err != nil {
+	// Setup and validation
+	cfg, logger, err := initializeMirrorOperation(flags)
+	if err != nil {
 		return err
 	}
 
-	// Get configuration
-	cfg, err := getConfig(flags)
+	// Setup mirror
+	m, artifact, opts, err := prepareMirrorExecution(logger, cfg, flags)
 	if err != nil {
-		return fmt.Errorf("configuration error: %w", err)
+		return err
 	}
 
-	// Setup logger
+	// Execute mirroring and handle results
+	return executeMirroring(logger, m, artifact, opts)
+}
+
+// initializeMirrorOperation handles validation, config loading, and logger setup.
+func initializeMirrorOperation(flags *MirrorFlags) (*config.Config, *logrus.Logger, error) {
+	if err := validateFlags(flags); err != nil {
+		return nil, nil, err
+	}
+
+	cfg, err := getConfig(flags)
+	if err != nil {
+		return nil, nil, fmt.Errorf("configuration error: %w", err)
+	}
+
 	logger := setupLogger(cfg, flags)
+	logConfigurationInfo(logger, flags, cfg)
 
-	// Log configuration (without sensitive data)
-	logger.WithFields(logrus.Fields{
-		"source_url":   flags.Source,
-		"destination":  flags.Destination,
-		"jfrog_url":    cfg.Destination.URL,
-		"jfrog_user":   cfg.Destination.User,
-		"raw_mode":     flags.Raw,
-		"unzip":        flags.Unzip,
-		"dry_run":      flags.DryRun,
-		"dry_run_mode": flags.DryRunMode,
-	}).Info("Starting mirror operation with configuration")
+	return cfg, logger, nil
+}
 
-	// Create mirror with sources and destinations
+// prepareMirrorExecution sets up the mirror, artifact, and options.
+func prepareMirrorExecution(logger *logrus.Logger, cfg *config.Config, flags *MirrorFlags) (*mirror.DefaultMirror, *core.Artifact, *core.MirrorOptions, error) {
 	m, err := setupMirror(logger, cfg, flags)
 	if err != nil {
 		logger.WithError(err).Error("Failed to setup mirror")
 
-		return err
+		return nil, nil, nil, err
 	}
 
 	logger.Debug("Mirror setup completed successfully")
 
-	// Create artifact and options
 	artifact, opts := createArtifactAndOptions(flags, cfg)
+	logArtifactInfo(logger, artifact)
 
-	logger.WithFields(logrus.Fields{
-		"artifact_name":     artifact.Name,
-		"artifact_location": artifact.Location,
-		"metadata":          artifact.Metadata,
-	}).Info("Created artifact for mirroring")
+	return m, artifact, opts, nil
+}
 
-	// Execute mirroring
+// executeMirroring runs the mirror operation and processes results.
+func executeMirroring(logger *logrus.Logger, m *mirror.DefaultMirror, artifact *core.Artifact, opts *core.MirrorOptions) error {
 	logger.Info("Starting mirror execution")
 
 	results := m.Mirror(opts.Context, []*core.Artifact{artifact}, opts)
 
-	// Process results
 	var lastErr error
 
 	for result := range results {
@@ -293,24 +233,56 @@ func runMirror(flags *MirrorFlags) error {
 			continue
 		}
 
-		logger.WithFields(logrus.Fields{
-			"artifact_name":    result.Artifact.Name,
-			"destination_path": result.DestinationPath,
-		}).Info("Successfully mirrored artifact")
-
-		// Also log with a user-friendly message showing the destination URL
-		if result.DestinationPath != "" {
-			logger.Infof("✓ Mirrored to: %s", result.DestinationPath)
-		}
+		logSuccessfulMirror(logger, result)
 	}
 
+	logMirrorCompletion(logger, lastErr)
+
+	return lastErr
+}
+
+// logConfigurationInfo logs the mirror operation configuration.
+func logConfigurationInfo(logger *logrus.Logger, flags *MirrorFlags, cfg *config.Config) {
+	logger.WithFields(logrus.Fields{
+		"source_url":    flags.Source,
+		"destination":   flags.Destination,
+		"registry_url":  cfg.Destination.URL,
+		"registry_user": cfg.Destination.User,
+		"raw_mode":      flags.Raw,
+		"unzip":         flags.Unzip,
+		"dry_run":       flags.DryRun,
+		"dry_run_mode":  flags.DryRunMode,
+	}).Info("Starting mirror operation with configuration")
+}
+
+// logArtifactInfo logs artifact information.
+func logArtifactInfo(logger *logrus.Logger, artifact *core.Artifact) {
+	logger.WithFields(logrus.Fields{
+		"artifact_name":     artifact.Name,
+		"artifact_location": artifact.Location,
+		"metadata":          artifact.Metadata,
+	}).Info("Created artifact for mirroring")
+}
+
+// logSuccessfulMirror logs successful mirror results.
+func logSuccessfulMirror(logger *logrus.Logger, result mirror.MirrorResult) {
+	logger.WithFields(logrus.Fields{
+		"artifact_name":    result.Artifact.Name,
+		"destination_path": result.DestinationPath,
+	}).Info("Successfully mirrored artifact")
+
+	if result.DestinationPath != "" {
+		logger.Infof("✓ Mirrored to: %s", result.DestinationPath)
+	}
+}
+
+// logMirrorCompletion logs the final result of the mirror operation.
+func logMirrorCompletion(logger *logrus.Logger, lastErr error) {
 	if lastErr == nil {
 		logger.Info("Mirror operation completed successfully")
 	} else {
 		logger.WithError(lastErr).Error("Mirror operation completed with errors")
 	}
-
-	return lastErr
 }
 
 // validateFlags checks if flags are valid.
@@ -353,138 +325,90 @@ func loadConfigFromFile(configFile string) (*config.Config, error) {
 	return cfg, nil
 }
 
-// detectSourceType determines the source type based on the URL.
-// When SourcePathStrip is provided, it strips the prefix first to determine the actual source.
-func detectSourceType(sourceURL, sourcePathStrip string) string {
-	return core.DetectSourceType(sourceURL, sourcePathStrip)
-}
-
 // buildConfigFromFlags creates configuration from flags and environment variables.
 func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
-	// Setup viper for environment variables
-	v := viper.New()
-	v.SetEnvPrefix("JFROG")
-	v.AutomaticEnv()
-
-	// Also setup viper for new registry environment variables
-	vRegistry := viper.New()
-	vRegistry.SetEnvPrefix("REGISTRY")
-	vRegistry.AutomaticEnv()
-
-	// Check if any registry configuration is provided (flags or environment variables)
-	// This includes checking environment variables to avoid incorrect fallback to JFrog credentials
-	anyRegistryFlagSet := flags.RegistryURL != "" || flags.RegistryUser != "" ||
-		flags.RegistryPassword != "" || flags.RegistryPasswordFromStdin || flags.RegistryType != ""
-
-	anyRegistryEnvSet := vRegistry.GetString("URL") != "" || vRegistry.GetString("USER") != "" ||
-		vRegistry.GetString("PASSWORD") != ""
-
-	usingRegistryConfig := anyRegistryFlagSet || anyRegistryEnvSet
-
-	// If using registry config via flags, validate that all required flags are provided (atomic behavior)
-	// This validation must happen before reading from stdin to avoid consuming input when validation fails
-	if anyRegistryFlagSet {
-		// Only validate flags when they're explicitly set (don't require flags if env vars are used)
-		missing := []string{}
-		if flags.RegistryURL == "" && vRegistry.GetString("URL") == "" {
-			missing = append(missing, "--registry-url or REGISTRY_URL")
-		}
-
-		if flags.RegistryUser == "" && vRegistry.GetString("USER") == "" {
-			missing = append(missing, "--registry-user or REGISTRY_USER")
-		}
-
-		if flags.RegistryPassword == "" && !flags.RegistryPasswordFromStdin && vRegistry.GetString("PASSWORD") == "" {
-			missing = append(missing, "--registry-password, --registry-password-stdin, or REGISTRY_PASSWORD")
-		}
-
-		if len(missing) > 0 {
-			return nil, fmt.Errorf(
-				"when using generic registry configuration, all credentials must be provided. Missing: %s",
-				strings.Join(missing, ", "),
-			)
-		}
-	}
-
-	// Get registry credentials (after validation to avoid consuming stdin on validation failure)
-	registryURL, registryUser, registryPassword, err := getRegistryCredentials(flags, vRegistry)
+	// Handle passwords from stdin
+	registryPassword, jfrogPassword, err := resolvePasswordsFromStdin(flags)
 	if err != nil {
 		return nil, err
 	}
 
-	// If no registry configuration is provided, fall back to JFrog credentials
-	if !usingRegistryConfig {
-		jfrogURL, err := getJFrogURL(flags, v)
-		if err != nil {
-			return nil, err
-		}
-
-		jfrogUser, jfrogPassword, err := GetJFrogCredentials(jfrogURL, flags, v)
-		if err != nil {
-			return nil, err
-		}
-
-		// Use JFrog credentials
-		registryURL = jfrogURL
-		registryUser = jfrogUser
-		registryPassword = jfrogPassword
+	// Resolve credentials with potential netrc fallback
+	creds, err := resolveCredentialsWithNetrc(flags, registryPassword, jfrogPassword)
+	if err != nil {
+		return nil, err
 	}
 
-	// Determine registry type with backward compatibility
-	registryType := flags.RegistryType
-	if registryType == "" {
-		registryType = "jfrog" // Default to jfrog for backward compatibility
-	}
-
-	// Create config
-	cfg := &config.Config{
-		Source: config.SourceConfig{
-			Type: detectSourceType(flags.Source, flags.SourcePathStrip),
-			URL:  flags.Source,
-		},
-		Destination: config.DestinationConfig{
-			Type:            registryType,
-			URL:             registryURL,
-			User:            registryUser,
-			Password:        registryPassword,
-			DestPath:        flags.Destination,
-			SourcePathStrip: flags.SourcePathStrip,
-		},
-		LogLevel:   "info",
-		Concurrent: defaultConcurrent,
-	}
-
-	// Validate the configuration
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid configuration: %w", err)
-	}
-
-	return cfg, nil
+	// Build configuration using builder pattern
+	return config.NewBuilder().
+		WithSource(flags.Source, flags.SourcePathStrip).
+		WithRegistryCredentials(creds).
+		WithDestination(flags.Destination, flags.SourcePathStrip).
+		Build()
 }
 
-// getJFrogURL retrieves and normalizes the JFrog URL from flags or environment.
-func getJFrogURL(flags *MirrorFlags, v *viper.Viper) (string, error) {
-	// Get JFrog URL (from flag or environment)
-	jfrogURL := flags.JFrogURL
-	if jfrogURL == "" {
-		jfrogURL = v.GetString("URL")
-	}
+// resolvePasswordsFromStdin handles reading passwords from stdin.
+func resolvePasswordsFromStdin(flags *MirrorFlags) (string, string, error) {
+	registryPassword := flags.RegistryPassword
 
-	// Normalize URL
-	if jfrogURL != "" {
-		// Add scheme if missing (CLI convenience feature)
-		if !strings.HasPrefix(jfrogURL, "http://") && !strings.HasPrefix(jfrogURL, "https://") {
-			jfrogURL = "http://" + jfrogURL
+	if flags.RegistryPasswordFromStdin {
+		password, err := io.ReadPasswordFromStdin()
+		if err != nil {
+			return "", "", fmt.Errorf("failed to read registry password from stdin: %w", err)
 		}
-		// Note: /artifactory path normalization is now handled by the JFrog destination library
+
+		registryPassword = password
 	}
 
-	// Validate
-	if jfrogURL == "" {
-		return "", fmt.Errorf("JFrog URL is required")
+	jfrogPassword := flags.JFrogPassword
+
+	if flags.JFrogPasswordFromStdin {
+		password, err := io.ReadPasswordFromStdin()
+		if err != nil {
+			return "", "", fmt.Errorf("failed to read JFrog password from stdin: %w", err)
+		}
+
+		jfrogPassword = password
 	}
 
-	return jfrogURL, nil
+	return registryPassword, jfrogPassword, nil
+}
+
+// resolveCredentialsWithNetrc resolves credentials and applies netrc fallback if needed.
+func resolveCredentialsWithNetrc(flags *MirrorFlags, registryPassword, jfrogPassword string) (*config.RegistryCredentials, error) {
+	resolver := config.NewCredentialsResolver()
+
+	creds, err := resolver.ResolveCredentials(
+		flags.RegistryURL, flags.RegistryUser, registryPassword, flags.RegistryType,
+		false, // passwordFromStdin already handled
+		flags.JFrogURL, flags.JFrogUser, jfrogPassword,
+		false, // passwordFromStdin already handled
+	)
+
+	if err != nil && creds != nil && creds.Type == "jfrog" && (creds.User == "" || creds.Password == "") {
+		return tryNetrcFallback(creds, err)
+	}
+
+	return creds, err
+}
+
+// tryNetrcFallback attempts to fill missing JFrog credentials from netrc.
+func tryNetrcFallback(creds *config.RegistryCredentials, originalErr error) (*config.RegistryCredentials, error) {
+	user, password, netrcErr := tryNetrcCredentials(creds.URL, creds.User, creds.Password)
+	if netrcErr != nil {
+		return nil, originalErr
+	}
+
+	creds.User = user
+	creds.Password = password
+
+	if creds.User == "" || creds.Password == "" {
+		_, _, validateErr := validateCredentials(user, password, netrcErr)
+
+		return nil, validateErr
+	}
+
+	return creds, nil
 }
 
 // GetJFrogCredentials retrieves JFrog credentials from flags, environment variables, or .netrc.
@@ -560,48 +484,6 @@ func validateCredentials(user, password string, netrcErr error) (string, string,
 	}
 
 	return user, password, nil
-}
-
-// getRegistryCredentials retrieves registry credentials from flags and environment variables.
-func getRegistryCredentials(flags *MirrorFlags, v *viper.Viper) (string, string, string, error) {
-	// Get URL from flag or environment
-	registryURL := flags.RegistryURL
-	if registryURL == "" {
-		registryURL = v.GetString("URL")
-	}
-
-	// Get user from flag or environment
-	registryUser := flags.RegistryUser
-	if registryUser == "" {
-		registryUser = v.GetString("USER")
-	}
-
-	// Get password from stdin, flag, or environment
-	var registryPassword string
-
-	if flags.RegistryPasswordFromStdin {
-		password, err := io.ReadPasswordFromStdin()
-		if err != nil {
-			return "", "", "", fmt.Errorf("failed to read registry password from stdin: %w", err)
-		}
-
-		registryPassword = password
-	} else {
-		registryPassword = flags.RegistryPassword
-		if registryPassword == "" {
-			registryPassword = v.GetString("PASSWORD")
-		}
-	}
-
-	// Normalize URL if provided
-	if registryURL != "" {
-		// Add scheme if missing (CLI convenience feature)
-		if !strings.HasPrefix(registryURL, "http://") && !strings.HasPrefix(registryURL, "https://") {
-			registryURL = "http://" + registryURL
-		}
-	}
-
-	return registryURL, registryUser, registryPassword, nil
 }
 
 // setupLogger creates and configures a logger.

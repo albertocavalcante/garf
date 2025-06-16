@@ -175,13 +175,7 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 	opts *core.MirrorOptions,
 	result *MirrorResult,
 ) error {
-	logger := m.logger.WithFields(logrus.Fields{
-		"artifact_name":     artifact.Name,
-		"artifact_location": artifact.Location,
-	})
-
-	logger.Debug("Getting source and destinations")
-
+	logger := m.createArtifactLogger(artifact)
 	source, destinations := m.getSourceAndDestinations()
 
 	logger.WithFields(logrus.Fields{
@@ -189,105 +183,128 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 		"has_source":       source != nil,
 	}).Debug("Retrieved source and destinations")
 
-	// Check if we're in dry-run mode that skips everything
-	if opts != nil && opts.DryRun && opts.DryRunMode == "all" {
-		logger.Info("Dry run mode 'all' - skipping download and upload")
-
-		// Build destination paths for dry-run feedback even when skipping everything
-		if len(destinations) > 0 {
-			var destinationPaths []string
-
-			for _, dest := range destinations {
-				raw := false
-				if opts != nil {
-					raw = opts.Raw
-				}
-
-				destPath, err := dest.BuildDestinationPath(artifact, raw)
-				if err != nil {
-					logger.WithError(err).Warn("Failed to build destination path for dry-run")
-				} else {
-					destinationPaths = append(destinationPaths, destPath)
-				}
-			}
-
-			// Set the first destination path in the result for logging
-			if len(destinationPaths) > 0 {
-				result.DestinationPath = destinationPaths[0]
-				logger.WithField("destination_path", result.DestinationPath).Info("Would upload to destination")
-			}
-		}
-
-		return nil
+	// Handle dry-run modes
+	if opts != nil && opts.DryRun {
+		return m.handleDryRunMode(opts, destinations, artifact, result, logger)
 	}
 
-	// For other modes, we need destinations
+	// For non-dry-run modes, we need destinations
 	if len(destinations) == 0 {
 		return fmt.Errorf("no destination available")
 	}
 
+	// Download and process content
+	finalContent, finalArtifact, err := m.downloadAndProcessContent(ctx, source, artifact, opts, logger)
+	if err != nil {
+		return err
+	}
+	defer finalContent.Close()
+
+	// Upload to all destinations
+	return m.uploadToDestinations(ctx, finalContent, finalArtifact, destinations, opts, result, logger)
+}
+
+// createArtifactLogger creates a logger with artifact context.
+func (m *DefaultMirror) createArtifactLogger(artifact *core.Artifact) *logrus.Entry {
+	return m.logger.WithFields(logrus.Fields{
+		"artifact_name":     artifact.Name,
+		"artifact_location": artifact.Location,
+	})
+}
+
+// handleDryRunMode handles different dry-run modes.
+func (m *DefaultMirror) handleDryRunMode(
+	opts *core.MirrorOptions,
+	destinations []core.Destination,
+	artifact *core.Artifact,
+	result *MirrorResult,
+	logger *logrus.Entry,
+) error {
+	logger.Infof("Dry run mode '%s' - skipping operations", opts.DryRunMode)
+
+	if len(destinations) > 0 {
+		destinationPaths := m.buildDestinationPaths(destinations, artifact, opts, logger)
+		if len(destinationPaths) > 0 {
+			result.DestinationPath = destinationPaths[0]
+			logger.WithField("destination_path", result.DestinationPath).Info("Would upload to destination")
+		}
+	}
+
+	return nil
+}
+
+// buildDestinationPaths builds destination paths for dry-run feedback.
+func (m *DefaultMirror) buildDestinationPaths(
+	destinations []core.Destination,
+	artifact *core.Artifact,
+	opts *core.MirrorOptions,
+	logger *logrus.Entry,
+) []string {
+	var destinationPaths []string
+
+	for _, dest := range destinations {
+		raw := opts != nil && opts.Raw
+
+		destPath, err := dest.BuildDestinationPath(artifact, raw)
+		if err != nil {
+			logger.WithError(err).Warn("Failed to build destination path for dry-run")
+		} else {
+			destinationPaths = append(destinationPaths, destPath)
+		}
+	}
+
+	return destinationPaths
+}
+
+// downloadAndProcessContent downloads and processes content.
+func (m *DefaultMirror) downloadAndProcessContent(
+	ctx context.Context,
+	source core.Source,
+	artifact *core.Artifact,
+	opts *core.MirrorOptions,
+	logger *logrus.Entry,
+) (io.ReadCloser, *core.Artifact, error) {
 	logger.Info("Starting artifact download from source")
 
 	content, err := source.Get(ctx, artifact)
 	if err != nil {
 		logger.WithError(err).Error("Failed to download artifact from source")
 
-		return fmt.Errorf("failed to get artifact: %w", err)
+		return nil, nil, fmt.Errorf("failed to get artifact: %w", err)
 	}
-
-	defer content.Close()
 
 	logger.Info("Successfully downloaded artifact from source")
 
 	// Handle ZIP extraction if needed
 	finalContent, finalArtifact, err := m.processContentForUpload(ctx, content, artifact, opts, m.logger)
 	if err != nil {
-		return fmt.Errorf("failed to process content: %w", err)
-	}
-	defer finalContent.Close()
+		content.Close() // Close the original content on error
 
-	// Check if we're in upload-only dry-run mode
-	if opts != nil && opts.DryRun && opts.DryRunMode == "upload" {
-		logger.Info("Dry run mode 'upload' - skipping upload only")
-
-		// Build destination paths for dry-run feedback
-		var destinationPaths []string
-
-		for _, dest := range destinations {
-			raw := false
-			if opts != nil {
-				raw = opts.Raw
-			}
-
-			destPath, err := dest.BuildDestinationPath(finalArtifact, raw)
-			if err != nil {
-				logger.WithError(err).Warn("Failed to build destination path for dry-run")
-			} else {
-				destinationPaths = append(destinationPaths, destPath)
-			}
-		}
-
-		// Set the first destination path in the result for logging
-		if len(destinationPaths) > 0 {
-			result.DestinationPath = destinationPaths[0]
-			logger.WithField("destination_path", result.DestinationPath).Info("Would upload to destination")
-		}
-
-		return nil
+		return nil, nil, fmt.Errorf("failed to process content: %w", err)
 	}
 
-	logger.Info("Buffering artifact content for upload")
-	// Buffer the content before concurrent uploads
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, finalContent); err != nil {
-		logger.WithError(err).Error("Failed to buffer artifact content")
+	// If no processing was needed, content == finalContent, so don't close content here
+	// The caller will close finalContent which may be the same as content
+	return finalContent, finalArtifact, nil
+}
 
-		return fmt.Errorf("failed to buffer content: %w", err)
+// uploadToDestinations uploads content to all destinations concurrently.
+func (m *DefaultMirror) uploadToDestinations(
+	ctx context.Context,
+	finalContent io.ReadCloser,
+	finalArtifact *core.Artifact,
+	destinations []core.Destination,
+	opts *core.MirrorOptions,
+	result *MirrorResult,
+	logger *logrus.Entry,
+) error {
+	// Buffer content for concurrent uploads
+	buf, err := m.bufferContent(finalContent, logger)
+	if err != nil {
+		return err
 	}
 
-	logger.WithField("buffer_size", buf.Len()).Debug("Successfully buffered artifact content")
-
-	// Create a new reader for each destination
+	// Create readers for each destination
 	readers := make([]io.Reader, len(destinations))
 	for i := range destinations {
 		readers[i] = bytes.NewReader(buf.Bytes())
@@ -295,6 +312,47 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 
 	logger.WithField("num_destinations", len(destinations)).Info("Starting concurrent uploads to destinations")
 
+	// Perform concurrent uploads
+	lastErr, destinationPath := m.performConcurrentUploads(ctx, destinations, readers, finalArtifact, opts, logger)
+
+	// Update result
+	result.Artifact = finalArtifact
+	result.DestinationPath = destinationPath
+
+	if lastErr != nil {
+		logger.WithError(lastErr).Error("One or more uploads failed")
+	} else {
+		logger.WithField("destination_path", destinationPath).Info("All uploads completed successfully")
+	}
+
+	return lastErr
+}
+
+// bufferContent buffers content for concurrent uploads.
+func (m *DefaultMirror) bufferContent(content io.ReadCloser, logger *logrus.Entry) (*bytes.Buffer, error) {
+	logger.Info("Buffering artifact content for upload")
+
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, content); err != nil {
+		logger.WithError(err).Error("Failed to buffer artifact content")
+
+		return nil, fmt.Errorf("failed to buffer content: %w", err)
+	}
+
+	logger.WithField("buffer_size", buf.Len()).Debug("Successfully buffered artifact content")
+
+	return &buf, nil
+}
+
+// performConcurrentUploads performs uploads to all destinations concurrently.
+func (m *DefaultMirror) performConcurrentUploads(
+	ctx context.Context,
+	destinations []core.Destination,
+	readers []io.Reader,
+	finalArtifact *core.Artifact,
+	opts *core.MirrorOptions,
+	logger *logrus.Entry,
+) (error, string) {
 	var wg sync.WaitGroup
 
 	errChan := make(chan error, len(destinations))
@@ -303,39 +361,19 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 	for i, dest := range destinations {
 		wg.Add(1)
 
-		go func(d core.Destination, r io.Reader, index int) {
-			defer wg.Done()
-
-			destLogger := logger.WithField("destination_index", index)
-			destLogger.Debug("Starting upload to destination")
-
-			// Get raw value from options, defaulting to false if options is nil
-			raw := false
-			if opts != nil {
-				raw = opts.Raw
-			}
-
-			destinationPath, err := d.Put(ctx, finalArtifact, r, raw)
-			if err != nil {
-				destLogger.WithError(err).Error("Failed to upload to destination")
-				errChan <- fmt.Errorf("failed to upload to destination: %w", err)
-			} else {
-				destLogger.WithField("destination_path", destinationPath).Info("Successfully uploaded to destination")
-				destinationPathChan <- destinationPath
-			}
-		}(dest, readers[i], i)
+		go m.uploadWorker(ctx, dest, readers[i], finalArtifact, opts, logger, i, &wg, errChan, destinationPathChan)
 	}
 
 	wg.Wait()
 	close(errChan)
 	close(destinationPathChan)
 
+	// Collect results
 	var lastErr error
 	for err := range errChan {
 		lastErr = err
 	}
 
-	// Get the first successful destination path
 	var destinationPath string
 	for path := range destinationPathChan {
 		if destinationPath == "" {
@@ -343,18 +381,37 @@ func (m *DefaultMirror) downloadAndUploadArtifact(
 		}
 	}
 
-	if lastErr != nil {
-		logger.WithError(lastErr).Error("One or more uploads failed")
+	return lastErr, destinationPath
+}
+
+// uploadWorker handles upload to a single destination.
+func (m *DefaultMirror) uploadWorker(
+	ctx context.Context,
+	dest core.Destination,
+	reader io.Reader,
+	finalArtifact *core.Artifact,
+	opts *core.MirrorOptions,
+	logger *logrus.Entry,
+	index int,
+	wg *sync.WaitGroup,
+	errChan chan<- error,
+	destinationPathChan chan<- string,
+) {
+	defer wg.Done()
+
+	destLogger := logger.WithField("destination_index", index)
+	destLogger.Debug("Starting upload to destination")
+
+	raw := opts != nil && opts.Raw
+
+	destinationPath, err := dest.Put(ctx, finalArtifact, reader, raw)
+	if err != nil {
+		destLogger.WithError(err).Error("Failed to upload to destination")
+		errChan <- fmt.Errorf("failed to upload to destination: %w", err)
 	} else {
-		logger.WithField("destination_path", destinationPath).Info("All uploads completed successfully")
+		destLogger.WithField("destination_path", destinationPath).Info("Successfully uploaded to destination")
+		destinationPathChan <- destinationPath
 	}
-
-	// Update the result artifact to reflect any changes (like from ZIP extraction)
-	result.Artifact = finalArtifact
-	// Set the destination path in the result
-	result.DestinationPath = destinationPath
-
-	return lastErr
 }
 
 // processContentForUpload handles ZIP extraction if needed and returns the final content and artifact.
@@ -429,20 +486,42 @@ func (m *DefaultMirror) extractZipContent(
 	opts *core.MirrorOptions,
 	logger *logrus.Logger,
 ) (io.ReadCloser, *core.Artifact, error) {
-	// Create temporary directory for extraction
+	// Create temp directory and extract file
+	tempDir, extractedPath, extractedName, err := m.setupAndExtractZip(tempZipPath, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Open extracted file
+	extractedFile, err := os.Open(extractedPath)
+	if err != nil {
+		os.RemoveAll(tempDir)
+
+		return nil, nil, fmt.Errorf("failed to open extracted file: %w", err)
+	}
+
+	// Create artifact with final name and cleanup reader
+	finalName := m.determineFinalName(artifact.Name, extractedName, opts, logger)
+	extractedArtifact := m.createExtractedArtifact(artifact, finalName, extractedName, logger)
+	finalContent := &tempDirCleanupReader{ReadCloser: extractedFile, tempDir: tempDir, logger: logger}
+
+	return finalContent, extractedArtifact, nil
+}
+
+// setupAndExtractZip creates temp directory and extracts ZIP file.
+func (m *DefaultMirror) setupAndExtractZip(tempZipPath string, logger *logrus.Logger) (string, string, string, error) {
 	tempDir, err := os.MkdirTemp("", "garf-unzip-*")
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create temporary directory: %w", err)
+		return "", "", "", fmt.Errorf("failed to create temporary directory: %w", err)
 	}
 
 	logger.WithField("temp_dir", tempDir).Debug("Created temporary directory for ZIP extraction")
 
-	// Extract the single file from ZIP
 	extractedPath, extractedName, err := m.extractSingleFileFromZip(tempZipPath, tempDir, logger)
 	if err != nil {
 		os.RemoveAll(tempDir)
 
-		return nil, nil, fmt.Errorf("failed to extract ZIP: %w", err)
+		return "", "", "", fmt.Errorf("failed to extract ZIP: %w", err)
 	}
 
 	logger.WithFields(logrus.Fields{
@@ -452,48 +531,42 @@ func (m *DefaultMirror) extractZipContent(
 		"temp_dir":       tempDir,
 	}).Info("Successfully extracted ZIP file")
 
-	// Open the extracted file for reading
-	extractedFile, err := os.Open(extractedPath)
-	if err != nil {
-		os.RemoveAll(tempDir)
+	return tempDir, extractedPath, extractedName, nil
+}
 
-		return nil, nil, fmt.Errorf("failed to open extracted file: %w", err)
-	}
-
-	// Determine the final artifact name
-	finalName := extractedName
+// determineFinalName determines the final artifact name based on options.
+func (m *DefaultMirror) determineFinalName(originalName, extractedName string, opts *core.MirrorOptions, logger *logrus.Logger) string {
 	if opts != nil && opts.PreserveZipName {
-		finalName = m.buildPreservedZipName(artifact.Name, extractedName)
+		finalName := m.buildPreservedZipName(originalName, extractedName)
 		logger.WithFields(logrus.Fields{
-			"original_zip_name": artifact.Name,
+			"original_zip_name": originalName,
 			"extracted_name":    extractedName,
 			"preserved_name":    finalName,
 		}).Info("Preserving ZIP filename with extracted file extension")
+
+		return finalName
 	}
 
-	// Create a new artifact with the extracted file information
+	return extractedName
+}
+
+// createExtractedArtifact creates a new artifact with extracted file information.
+func (m *DefaultMirror) createExtractedArtifact(original *core.Artifact, finalName, extractedName string, logger *logrus.Logger) *core.Artifact {
 	extractedArtifact := &core.Artifact{
 		Name:     finalName,
-		Location: artifact.Location, // Keep original location for coordinate extraction
-		Metadata: artifact.Metadata,
-		Version:  artifact.Version,
+		Location: original.Location,
+		Metadata: original.Metadata,
+		Version:  original.Version,
 	}
 
 	logger.WithFields(logrus.Fields{
-		"original_name":     artifact.Name,
+		"original_name":     original.Name,
 		"extracted_name":    extractedName,
 		"final_name":        finalName,
-		"original_location": artifact.Location,
+		"original_location": original.Location,
 	}).Info("Updated artifact information with extracted file")
 
-	// Return a custom ReadCloser that cleans up the temp directory when closed
-	finalContent := &tempDirCleanupReader{
-		ReadCloser: extractedFile,
-		tempDir:    tempDir,
-		logger:     logger,
-	}
-
-	return finalContent, extractedArtifact, nil
+	return extractedArtifact
 }
 
 // extractSingleFileFromZip extracts a single file from a ZIP archive.
@@ -502,20 +575,34 @@ func (m *DefaultMirror) extractSingleFileFromZip(
 	zipPath, destDir string,
 	logger *logrus.Logger,
 ) (string, string, error) {
-	// Open the ZIP file
 	reader, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to open ZIP file: %w", err)
 	}
 	defer reader.Close()
 
-	// Find the first non-directory file
+	targetFile, err := m.findSingleFileInZip(reader)
+	if err != nil {
+		return "", "", err
+	}
+
+	if err := m.validateFileSize(targetFile); err != nil {
+		return "", "", err
+	}
+
+	logger.WithField("zip_file_name", targetFile.Name).Debug("Found file in ZIP archive")
+
+	return m.extractFileFromZip(targetFile, destDir, logger)
+}
+
+// findSingleFileInZip finds exactly one non-directory file in the ZIP.
+func (m *DefaultMirror) findSingleFileInZip(reader *zip.ReadCloser) (*zip.File, error) {
 	var targetFile *zip.File
 
 	for _, f := range reader.File {
 		if !f.FileInfo().IsDir() {
 			if targetFile != nil {
-				return "", "", fmt.Errorf("ZIP file contains multiple files, expected exactly one")
+				return nil, fmt.Errorf("ZIP file contains multiple files, expected exactly one")
 			}
 
 			targetFile = f
@@ -523,51 +610,33 @@ func (m *DefaultMirror) extractSingleFileFromZip(
 	}
 
 	if targetFile == nil {
-		return "", "", fmt.Errorf("no files found in ZIP archive")
+		return nil, fmt.Errorf("no files found in ZIP archive")
 	}
 
-	// Check file size to prevent ZIP bombs
-	if targetFile.UncompressedSize64 > maxExtractedFileSize {
-		return "", "", fmt.Errorf("file too large: %d bytes (max allowed: %d bytes)",
-			targetFile.UncompressedSize64, maxExtractedFileSize)
+	return targetFile, nil
+}
+
+// validateFileSize checks if the file size is within limits.
+func (m *DefaultMirror) validateFileSize(file *zip.File) error {
+	if file.UncompressedSize64 > maxExtractedFileSize {
+		return fmt.Errorf("file too large: %d bytes (max allowed: %d bytes)",
+			file.UncompressedSize64, maxExtractedFileSize)
 	}
 
-	logger.WithField("zip_file_name", targetFile.Name).Debug("Found file in ZIP archive")
+	return nil
+}
 
-	// Create destination directory if it doesn't exist
+// extractFileFromZip extracts a file from ZIP to the destination directory.
+func (m *DefaultMirror) extractFileFromZip(targetFile *zip.File, destDir string, logger *logrus.Logger) (string, string, error) {
 	if err := os.MkdirAll(destDir, defaultDirPerm); err != nil {
 		return "", "", fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
-	// Get the base filename (remove any path components)
 	fileName := filepath.Base(targetFile.Name)
 	destPath := filepath.Join(destDir, fileName)
 
-	// Open the file inside the ZIP
-	rc, err := targetFile.Open()
-	if err != nil {
-		return "", "", fmt.Errorf("failed to open file inside ZIP: %w", err)
-	}
-	defer rc.Close()
-
-	// Create the destination file
-	outFile, err := os.Create(destPath)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to create destination file: %w", err)
-	}
-	defer outFile.Close()
-
-	// Copy the file contents with size limit protection
-	limitedReader := io.LimitReader(rc, maxExtractedFileSize+1) // +1 to detect oversized files
-
-	bytesWritten, err := io.Copy(outFile, limitedReader)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to copy file contents: %w", err)
-	}
-
-	// Check if the file exceeded the size limit during extraction
-	if bytesWritten > maxExtractedFileSize {
-		return "", "", fmt.Errorf("file exceeded size limit during extraction: %d bytes", bytesWritten)
+	if err := m.copyFileFromZip(targetFile, destPath); err != nil {
+		return "", "", err
 	}
 
 	logger.WithFields(logrus.Fields{
@@ -577,6 +646,35 @@ func (m *DefaultMirror) extractSingleFileFromZip(
 	}).Debug("Successfully extracted file from ZIP")
 
 	return destPath, fileName, nil
+}
+
+// copyFileFromZip copies a file from ZIP to destination with size protection.
+func (m *DefaultMirror) copyFileFromZip(targetFile *zip.File, destPath string) error {
+	rc, err := targetFile.Open()
+	if err != nil {
+		return fmt.Errorf("failed to open file inside ZIP: %w", err)
+	}
+	defer rc.Close()
+
+	outFile, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer outFile.Close()
+
+	// Copy with size limit protection
+	limitedReader := io.LimitReader(rc, maxExtractedFileSize+1)
+
+	bytesWritten, err := io.Copy(outFile, limitedReader)
+	if err != nil {
+		return fmt.Errorf("failed to copy file contents: %w", err)
+	}
+
+	if bytesWritten > maxExtractedFileSize {
+		return fmt.Errorf("file exceeded size limit during extraction: %d bytes", bytesWritten)
+	}
+
+	return nil
 }
 
 // buildPreservedZipName constructs a filename that preserves the ZIP name but uses the extracted file's extension.

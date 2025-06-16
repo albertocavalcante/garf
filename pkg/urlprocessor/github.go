@@ -10,6 +10,19 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Constants for GitHub URL parsing to avoid magic numbers.
+const (
+	minGitHubStandardURLParts = 6 // For owner/repo/releases/download/version/filename
+	minGitHubStrippedParts    = 3 // For owner/repo/filename
+	minGitHubVersionParts     = 4 // For owner/repo/version/filename
+	gitHubOwnerIndex          = 0 // Index of owner in path parts
+	gitHubRepoIndex           = 1 // Index of repo in path parts
+	gitHubVersionIndex        = 2 // Index of version in stripped URLs
+	gitHubReleasesIndex       = 2 // Index of "releases" in standard URLs
+	gitHubDownloadIndex       = 3 // Index of "download" in standard URLs
+	gitHubReleaseVersionIndex = 4 // Index of version in standard URLs
+)
+
 // GitHubProcessor handles GitHub release URLs and creates structured paths.
 type GitHubProcessor struct {
 	logger *logrus.Logger
@@ -42,102 +55,136 @@ func (p *GitHubProcessor) CanProcess(sourceURL *url.URL) bool {
 // If raw=true, it preserves the complete URL structure.
 // If raw=false, it creates a cleaner structure like github.com/owner/repo/version/filename.
 func (p *GitHubProcessor) Process(sourceURL *url.URL, raw bool) string {
-	logger := p.logger.WithFields(logrus.Fields{
+	logger := p.createLogger(sourceURL, raw)
+	filename := path.Base(sourceURL.Path)
+	pathParts := p.parsePathComponents(sourceURL, logger)
+
+	logger.WithField("filename", filename).Debug("Extracted filename from URL")
+
+	// Try different URL patterns in order of specificity
+	if result, ok := p.tryStandardReleaseURL(pathParts, filename, raw, logger); ok {
+		return result
+	}
+
+	if result, ok := p.tryStrippedVersionURL(pathParts, filename, logger); ok {
+		return result
+	}
+
+	if result, ok := p.tryOwnerRepoURL(pathParts, filename, logger); ok {
+		return result
+	}
+
+	// Fallback to filename
+	logger.WithField("result_path", filename).Info("Using filename as fallback for unrecognized GitHub URL pattern")
+
+	return filename
+}
+
+// createLogger creates a logger with URL processing context.
+func (p *GitHubProcessor) createLogger(sourceURL *url.URL, raw bool) *logrus.Entry {
+	return p.logger.WithFields(logrus.Fields{
 		"url":      sourceURL.String(),
 		"raw_mode": raw,
 	})
+}
 
+// parsePathComponents splits the URL path into components.
+func (p *GitHubProcessor) parsePathComponents(sourceURL *url.URL, logger *logrus.Entry) []string {
 	logger.Debug("Processing GitHub URL")
 
-	// Extract filename
-	filename := path.Base(sourceURL.Path)
-	logger.WithField("filename", filename).Debug("Extracted filename from URL")
-
-	// Parse the GitHub path components
 	pathParts := strings.Split(strings.TrimPrefix(sourceURL.Path, "/"), "/")
 	logger.WithFields(logrus.Fields{
 		"path_parts":       pathParts,
 		"path_parts_count": len(pathParts),
 	}).Debug("Split URL path into components")
 
-	// Check if this is a standard GitHub release URL (owner/repo/releases/download/version/filename)
-	if len(pathParts) >= 6 && pathParts[2] == "releases" && pathParts[3] == "download" {
-		logger.Debug("Detected standard GitHub release URL format")
+	return pathParts
+}
 
-		owner := pathParts[0]
-		repo := pathParts[1]
-		version := pathParts[4]
-
-		logger.WithFields(logrus.Fields{
-			"owner":    owner,
-			"repo":     repo,
-			"version":  version,
-			"filename": filename,
-		}).Debug("Extracted GitHub release components from standard URL")
-
-		if raw {
-			result := fmt.Sprintf("github.com/%s/%s/releases/download/%s/%s", owner, repo, version, filename)
-			logger.WithField("result_path", result).Info("Built raw GitHub path from standard release URL")
-
-			return result
-		} else {
-			result := fmt.Sprintf("github.com/%s/%s/%s/%s", owner, repo, version, filename)
-			logger.WithField("result_path", result).Info("Built structured GitHub path from standard release URL")
-
-			return result
-		}
+// tryStandardReleaseURL attempts to parse as owner/repo/releases/download/version/filename.
+func (p *GitHubProcessor) tryStandardReleaseURL(pathParts []string, filename string, raw bool, logger *logrus.Entry) (string, bool) {
+	if len(pathParts) < minGitHubStandardURLParts ||
+		pathParts[gitHubReleasesIndex] != "releases" ||
+		pathParts[gitHubDownloadIndex] != "download" {
+		return "", false
 	}
 
-	// Check if this is a stripped GitHub URL with coordinates (owner/repo/version/filename)
-	// This handles URLs that have been processed by source path stripping
-	if len(pathParts) >= 3 {
-		logger.WithFields(logrus.Fields{
-			"path_parts":       pathParts,
-			"path_parts_count": len(pathParts),
-		}).Debug("Checking for stripped GitHub URL pattern")
+	logger.Debug("Detected standard GitHub release URL format")
 
-		// Try to detect if this looks like owner/repo/version/filename pattern
-		// We can identify this by checking if the third component looks like a version
-		if len(pathParts) >= 4 {
-			owner := pathParts[0]
-			repo := pathParts[1]
-			potentialVersion := pathParts[2]
+	owner := pathParts[gitHubOwnerIndex]
+	repo := pathParts[gitHubRepoIndex]
+	version := pathParts[gitHubReleaseVersionIndex]
 
-			// Check if the third component looks like a version (contains digits or dots or starts with 'v')
-			isVersion := strings.Contains(potentialVersion, ".") ||
-				strings.HasPrefix(potentialVersion, "v") ||
-				strings.ContainsAny(potentialVersion, "0123456789")
+	logger.WithFields(logrus.Fields{
+		"owner":    owner,
+		"repo":     repo,
+		"version":  version,
+		"filename": filename,
+	}).Debug("Extracted GitHub release components from standard URL")
 
-			if isVersion {
-				logger.WithFields(logrus.Fields{
-					"owner":             owner,
-					"repo":              repo,
-					"potential_version": potentialVersion,
-					"filename":          filename,
-				}).Debug("Detected stripped GitHub URL with version pattern")
+	if raw {
+		result := fmt.Sprintf("github.com/%s/%s/releases/download/%s/%s", owner, repo, version, filename)
+		logger.WithField("result_path", result).Info("Built raw GitHub path from standard release URL")
 
-				result := fmt.Sprintf("github.com/%s/%s/%s/%s", owner, repo, potentialVersion, filename)
-				logger.WithField("result_path", result).Info("Built structured GitHub path from stripped URL coordinates")
-
-				return result
-			}
-		}
-
-		// If we have at least 3 parts but it doesn't look like a version pattern,
-		// treat it as owner/repo/filename (fallback for non-standard patterns)
-		if len(pathParts) >= 3 {
-			owner := pathParts[0]
-			repo := pathParts[1]
-
-			result := fmt.Sprintf("github.com/%s/%s/%s", owner, repo, filename)
-			logger.WithField("result_path", result).Info("Built structured GitHub path from owner/repo pattern")
-
-			return result
-		}
+		return result, true
 	}
 
-	// Fallback: if we can't parse the structure, just return the filename
-	logger.WithField("result_path", filename).Info("Using filename as fallback for unrecognized GitHub URL pattern")
+	result := fmt.Sprintf("github.com/%s/%s/%s/%s", owner, repo, version, filename)
+	logger.WithField("result_path", result).Info("Built structured GitHub path from standard release URL")
 
-	return filename
+	return result, true
+}
+
+// tryStrippedVersionURL attempts to parse as owner/repo/version/filename.
+func (p *GitHubProcessor) tryStrippedVersionURL(pathParts []string, filename string, logger *logrus.Entry) (string, bool) {
+	if len(pathParts) < minGitHubVersionParts {
+		return "", false
+	}
+
+	logger.WithFields(logrus.Fields{
+		"path_parts":       pathParts,
+		"path_parts_count": len(pathParts),
+	}).Debug("Checking for stripped GitHub URL pattern")
+
+	owner := pathParts[gitHubOwnerIndex]
+	repo := pathParts[gitHubRepoIndex]
+	potentialVersion := pathParts[gitHubVersionIndex]
+
+	if !p.looksLikeVersion(potentialVersion) {
+		return "", false
+	}
+
+	logger.WithFields(logrus.Fields{
+		"owner":             owner,
+		"repo":              repo,
+		"potential_version": potentialVersion,
+		"filename":          filename,
+	}).Debug("Detected stripped GitHub URL with version pattern")
+
+	result := fmt.Sprintf("github.com/%s/%s/%s/%s", owner, repo, potentialVersion, filename)
+	logger.WithField("result_path", result).Info("Built structured GitHub path from stripped URL coordinates")
+
+	return result, true
+}
+
+// tryOwnerRepoURL attempts to parse as owner/repo/filename.
+func (p *GitHubProcessor) tryOwnerRepoURL(pathParts []string, filename string, logger *logrus.Entry) (string, bool) {
+	if len(pathParts) < minGitHubStrippedParts {
+		return "", false
+	}
+
+	owner := pathParts[gitHubOwnerIndex]
+	repo := pathParts[gitHubRepoIndex]
+
+	result := fmt.Sprintf("github.com/%s/%s/%s", owner, repo, filename)
+	logger.WithField("result_path", result).Info("Built structured GitHub path from owner/repo pattern")
+
+	return result, true
+}
+
+// looksLikeVersion checks if a string looks like a version identifier.
+func (p *GitHubProcessor) looksLikeVersion(s string) bool {
+	return strings.Contains(s, ".") ||
+		strings.HasPrefix(s, "v") ||
+		strings.ContainsAny(s, "0123456789")
 }

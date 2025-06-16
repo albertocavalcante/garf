@@ -216,8 +216,8 @@ func (d *CloudsmithDestination) Exists(ctx context.Context, artifact *core.Artif
 }
 
 // BuildDestinationPath constructs the destination path for an artifact.
-func (d *CloudsmithDestination) BuildDestinationPath(artifact *core.Artifact, raw bool) (string, error) {
-	// Parse destination path to get owner and repo
+func (d *CloudsmithDestination) BuildDestinationPath(artifact *core.Artifact, _ bool) (string, error) {
+	// Validate destination path format
 	const expectedPathParts = 2
 
 	parts := strings.Split(d.config.DestPath, "/")
@@ -225,19 +225,15 @@ func (d *CloudsmithDestination) BuildDestinationPath(artifact *core.Artifact, ra
 		return "", fmt.Errorf("invalid destination path format, expected 'owner/repo', got: %s", d.config.DestPath)
 	}
 
-	owner, repo := parts[0], parts[1]
-
-	// Remove the source path strip prefix if configured
+	// Process artifact name with source path stripping
 	artifactName := artifact.Name
 	if d.config.SourcePathStrip != "" && strings.HasPrefix(artifact.Name, d.config.SourcePathStrip) {
 		artifactName = strings.TrimPrefix(artifact.Name, d.config.SourcePathStrip)
-		// Remove leading slash if present
-		artifactName = strings.TrimPrefix(artifactName, "/")
+		artifactName = strings.TrimPrefix(artifactName, "/") // Remove leading slash if present
 	}
 
-	// For Cloudsmith, include owner/repo in the destination path for consistency
-	// Format: owner/repo/artifactName
-	return fmt.Sprintf("%s/%s/%s", owner, repo, artifactName), nil
+	// For Cloudsmith, include the owner/repo in the destination path
+	return d.config.DestPath + "/" + artifactName, nil
 }
 
 // Validate checks if the CloudsmithDestination configuration is valid.
