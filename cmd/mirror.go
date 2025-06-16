@@ -37,7 +37,7 @@ type MirrorFlags struct {
 	DryRunMode      string
 	SourcePathStrip string
 
-	// Legacy JFrog-specific flags (backward compatibility)
+// Legacy JFrog-specific flags (backward compatibility, will be removed in future versions)
 	JFrogURL               string
 	JFrogUser              string
 	JFrogPassword          string
