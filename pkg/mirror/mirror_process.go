@@ -49,6 +49,8 @@ func SetupDestination(logger *logrus.Logger, config *config.Config) (core.Destin
 			SourcePathStrip: config.Destination.SourcePathStrip,
 		}
 		destination = destinations.NewJFrogDestination(destConfig, logger)
+	case core.RegistryTypeCloudsmith:
+		return nil, fmt.Errorf("cloudsmith registry not yet implemented")
 	default:
 		return nil, fmt.Errorf("unsupported destination type: %s", config.Destination.Type)
 	}
