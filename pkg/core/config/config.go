@@ -105,7 +105,7 @@ func (c *Config) validateDestination() error {
 		return fmt.Errorf("destination type cannot be empty")
 	}
 
-	if c.Destination.Type != "jfrog" {
+	if c.Destination.Type != "jfrog" && c.Destination.Type != "cloudsmith" {
 		return fmt.Errorf("invalid destination type: %s", c.Destination.Type)
 	}
 

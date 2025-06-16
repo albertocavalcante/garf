@@ -25,22 +25,32 @@ const (
 
 // MirrorFlags holds the command-line flags for the mirror command.
 type MirrorFlags struct {
-	ConfigFile             string
-	Source                 string
-	Destination            string
-	FromFile               string
-	Raw                    bool
-	Properties             []string
-	Unzip                  bool
-	PreserveZipName        bool
-	DryRun                 bool
-	DryRunMode             string
-	SourcePathStrip        string
+	ConfigFile      string
+	Source          string
+	Destination     string
+	FromFile        string
+	Raw             bool
+	Properties      []string
+	Unzip           bool
+	PreserveZipName bool
+	DryRun          bool
+	DryRunMode      string
+	SourcePathStrip string
+
+	// Legacy JFrog-specific flags (backward compatibility)
 	JFrogURL               string
 	JFrogUser              string
 	JFrogPassword          string
 	JFrogPasswordFromStdin bool
-	TestMirror             *mirror.DefaultMirror // Used for testing only
+
+	// New generic registry flags (preferred for new usage)
+	RegistryType              string
+	RegistryURL               string
+	RegistryUser              string
+	RegistryPassword          string
+	RegistryPasswordFromStdin bool
+
+	TestMirror *mirror.DefaultMirror // Used for testing only
 }
 
 // ValidateDryRunMode checks if the dry run mode is valid.
@@ -186,6 +196,38 @@ func setupMirrorFlags(cmd *cobra.Command, flags *MirrorFlags) {
 		"",
 		"Strip path prefixes from source URLs before processing (e.g., 'artifactory.corp.net/staging/' for JFrog-hosted artifacts)",
 	)
+
+	// New generic registry flags (preferred for new usage)
+	cmd.Flags().StringVar(
+		&flags.RegistryType,
+		"registry-type",
+		"jfrog", // Default to jfrog for backward compatibility
+		"Registry type: 'jfrog' or 'cloudsmith'",
+	)
+	cmd.Flags().StringVar(
+		&flags.RegistryURL,
+		"registry-url",
+		"",
+		"Registry URL (can also be set via REGISTRY_URL env var)",
+	)
+	cmd.Flags().StringVar(
+		&flags.RegistryUser,
+		"registry-user",
+		"",
+		"Registry username (can also be set via REGISTRY_USER env var)",
+	)
+	cmd.Flags().StringVar(
+		&flags.RegistryPassword,
+		"registry-password",
+		"",
+		"Registry password (can also be set via REGISTRY_PASSWORD env var)",
+	)
+	cmd.Flags().BoolVar(
+		&flags.RegistryPasswordFromStdin,
+		"registry-password-stdin",
+		false,
+		"Read registry password from stdin (more secure than --registry-password)",
+	)
 }
 
 // runMirror executes the mirror operation.
@@ -324,15 +366,47 @@ func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
 	v.SetEnvPrefix("JFROG")
 	v.AutomaticEnv()
 
-	// Get JFrog credentials
-	jfrogURL, err := getJFrogURL(flags, v)
+	// Also setup viper for new registry environment variables
+	vRegistry := viper.New()
+	vRegistry.SetEnvPrefix("REGISTRY")
+	vRegistry.AutomaticEnv()
+
+	// Get registry credentials with backward compatibility
+	registryURL, registryUser, registryPassword, err := getRegistryCredentials(flags, vRegistry)
 	if err != nil {
 		return nil, err
 	}
 
-	jfrogUser, jfrogPassword, err := GetJFrogCredentials(jfrogURL, flags, v)
-	if err != nil {
-		return nil, err
+	// If registry credentials are not provided, fall back to JFrog credentials
+	if registryURL == "" || registryUser == "" || registryPassword == "" {
+		jfrogURL, err := getJFrogURL(flags, v)
+		if err != nil {
+			return nil, err
+		}
+
+		jfrogUser, jfrogPassword, err := GetJFrogCredentials(jfrogURL, flags, v)
+		if err != nil {
+			return nil, err
+		}
+
+		// Use JFrog credentials as fallback
+		if registryURL == "" {
+			registryURL = jfrogURL
+		}
+
+		if registryUser == "" {
+			registryUser = jfrogUser
+		}
+
+		if registryPassword == "" {
+			registryPassword = jfrogPassword
+		}
+	}
+
+	// Determine registry type with backward compatibility
+	registryType := flags.RegistryType
+	if registryType == "" {
+		registryType = "jfrog" // Default to jfrog for backward compatibility
 	}
 
 	// Create config
@@ -342,10 +416,10 @@ func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
 			URL:  flags.Source,
 		},
 		Destination: config.DestinationConfig{
-			Type:            "jfrog",
-			URL:             jfrogURL,
-			User:            jfrogUser,
-			Password:        jfrogPassword,
+			Type:            registryType,
+			URL:             registryURL,
+			User:            registryUser,
+			Password:        registryPassword,
 			DestPath:        flags.Destination,
 			SourcePathStrip: flags.SourcePathStrip,
 		},
@@ -459,6 +533,48 @@ func validateCredentials(user, password string, netrcErr error) (string, string,
 	}
 
 	return user, password, nil
+}
+
+// getRegistryCredentials retrieves registry credentials from flags and environment variables.
+func getRegistryCredentials(flags *MirrorFlags, v *viper.Viper) (string, string, string, error) {
+	// Get URL from flag or environment
+	registryURL := flags.RegistryURL
+	if registryURL == "" {
+		registryURL = v.GetString("URL")
+	}
+
+	// Get user from flag or environment
+	registryUser := flags.RegistryUser
+	if registryUser == "" {
+		registryUser = v.GetString("USER")
+	}
+
+	// Get password from stdin, flag, or environment
+	var registryPassword string
+
+	if flags.RegistryPasswordFromStdin {
+		password, err := io.ReadPasswordFromStdin()
+		if err != nil {
+			return "", "", "", fmt.Errorf("failed to read registry password from stdin: %w", err)
+		}
+
+		registryPassword = password
+	} else {
+		registryPassword = flags.RegistryPassword
+		if registryPassword == "" {
+			registryPassword = v.GetString("PASSWORD")
+		}
+	}
+
+	// Normalize URL if provided
+	if registryURL != "" {
+		// Add scheme if missing (CLI convenience feature)
+		if !strings.HasPrefix(registryURL, "http://") && !strings.HasPrefix(registryURL, "https://") {
+			registryURL = "http://" + registryURL
+		}
+	}
+
+	return registryURL, registryUser, registryPassword, nil
 }
 
 // setupLogger creates and configures a logger.
