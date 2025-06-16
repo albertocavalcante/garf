@@ -387,12 +387,15 @@ func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
 		if registryURL == "" {
 			missing = append(missing, "--registry-url")
 		}
+
 		if registryUser == "" {
 			missing = append(missing, "--registry-user")
 		}
+
 		if registryPassword == "" {
 			missing = append(missing, "--registry-password")
 		}
+
 		return nil, fmt.Errorf("when using generic registry flags, all must be provided. Missing: %s", strings.Join(missing, ", "))
 	}
 

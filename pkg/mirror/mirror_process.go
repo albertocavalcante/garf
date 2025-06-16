@@ -2,6 +2,7 @@ package mirror
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/albertocavalcante/garf/pkg/core"
 	"github.com/albertocavalcante/garf/pkg/core/config"
@@ -36,8 +37,10 @@ func SetupSource(logger *logrus.Logger, config *config.Config) (core.Source, err
 func SetupDestination(logger *logrus.Logger, config *config.Config) (core.Destination, error) {
 	var destination core.Destination
 
-	switch config.Destination.Type {
-	case "jfrog":
+	// Convert to lowercase for case-insensitive comparison
+	destType := strings.ToLower(config.Destination.Type)
+	switch destType {
+	case core.RegistryTypeJFrog:
 		destConfig := destinations.JFrogConfig{
 			URL:             config.Destination.URL,
 			User:            config.Destination.User,

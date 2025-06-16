@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/albertocavalcante/garf/pkg/core"
 	yaml "gopkg.in/yaml.v3"
@@ -105,7 +106,9 @@ func (c *Config) validateDestination() error {
 		return fmt.Errorf("destination type cannot be empty")
 	}
 
-	if c.Destination.Type != "jfrog" && c.Destination.Type != "cloudsmith" {
+	// Check if destination type is valid (case-insensitive)
+	destType := strings.ToLower(c.Destination.Type)
+	if _, ok := core.ValidDestinationTypes[destType]; !ok {
 		return fmt.Errorf("invalid destination type: %s", c.Destination.Type)
 	}
 
