@@ -371,14 +371,33 @@ func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
 	vRegistry.SetEnvPrefix("REGISTRY")
 	vRegistry.AutomaticEnv()
 
-	// Get registry credentials with backward compatibility
+	// Get registry credentials
 	registryURL, registryUser, registryPassword, err := getRegistryCredentials(flags, vRegistry)
 	if err != nil {
 		return nil, err
 	}
 
-	// If registry credentials are not provided, fall back to JFrog credentials
-	if registryURL == "" || registryUser == "" || registryPassword == "" {
+	// Check if any registry flags are set - if so, all must be provided (atomic behavior)
+	anyRegistryFlagSet := registryURL != "" || registryUser != "" || registryPassword != ""
+	allRegistryFlagsSet := registryURL != "" && registryUser != "" && registryPassword != ""
+
+	if anyRegistryFlagSet && !allRegistryFlagsSet {
+		// Some but not all registry flags are set - this is an error
+		missing := []string{}
+		if registryURL == "" {
+			missing = append(missing, "--registry-url")
+		}
+		if registryUser == "" {
+			missing = append(missing, "--registry-user")
+		}
+		if registryPassword == "" {
+			missing = append(missing, "--registry-password")
+		}
+		return nil, fmt.Errorf("when using generic registry flags, all must be provided. Missing: %s", strings.Join(missing, ", "))
+	}
+
+	// If no registry flags are set, fall back to JFrog credentials
+	if !anyRegistryFlagSet {
 		jfrogURL, err := getJFrogURL(flags, v)
 		if err != nil {
 			return nil, err
@@ -389,18 +408,10 @@ func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
 			return nil, err
 		}
 
-		// Use JFrog credentials as fallback
-		if registryURL == "" {
-			registryURL = jfrogURL
-		}
-
-		if registryUser == "" {
-			registryUser = jfrogUser
-		}
-
-		if registryPassword == "" {
-			registryPassword = jfrogPassword
-		}
+		// Use JFrog credentials
+		registryURL = jfrogURL
+		registryUser = jfrogUser
+		registryPassword = jfrogPassword
 	}
 
 	// Determine registry type with backward compatibility
