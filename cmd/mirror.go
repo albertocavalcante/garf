@@ -371,35 +371,41 @@ func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
 	vRegistry.SetEnvPrefix("REGISTRY")
 	vRegistry.AutomaticEnv()
 
-	// Get registry credentials
+	// Check if any registry flags (not env vars) are set - if so, all must be provided (atomic behavior)
+	// This validation must happen before reading from stdin to avoid consuming input when validation fails
+	anyRegistryFlagSet := flags.RegistryURL != "" || flags.RegistryUser != "" ||
+		flags.RegistryPassword != "" || flags.RegistryPasswordFromStdin
+
+	if anyRegistryFlagSet {
+		// If any registry flag is set, validate that all required flags are provided
+		missing := []string{}
+		if flags.RegistryURL == "" {
+			missing = append(missing, "--registry-url")
+		}
+
+		if flags.RegistryUser == "" {
+			missing = append(missing, "--registry-user")
+		}
+
+		if flags.RegistryPassword == "" && !flags.RegistryPasswordFromStdin {
+			missing = append(missing, "--registry-password or --registry-password-stdin")
+		}
+
+		if len(missing) > 0 {
+			return nil, fmt.Errorf(
+				"when using generic registry flags, all must be provided. Missing: %s",
+				strings.Join(missing, ", "),
+			)
+		}
+	}
+
+	// Get registry credentials (after validation to avoid consuming stdin on validation failure)
 	registryURL, registryUser, registryPassword, err := getRegistryCredentials(flags, vRegistry)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check if any registry flags are set - if so, all must be provided (atomic behavior)
-	anyRegistryFlagSet := registryURL != "" || registryUser != "" || registryPassword != ""
-	allRegistryFlagsSet := registryURL != "" && registryUser != "" && registryPassword != ""
-
-	if anyRegistryFlagSet && !allRegistryFlagsSet {
-		// Some but not all registry flags are set - this is an error
-		missing := []string{}
-		if registryURL == "" {
-			missing = append(missing, "--registry-url")
-		}
-
-		if registryUser == "" {
-			missing = append(missing, "--registry-user")
-		}
-
-		if registryPassword == "" {
-			missing = append(missing, "--registry-password")
-		}
-
-		return nil, fmt.Errorf("when using generic registry flags, all must be provided. Missing: %s", strings.Join(missing, ", "))
-	}
-
-	// If no registry flags are set, fall back to JFrog credentials
+	// If no registry flags are explicitly set, fall back to JFrog credentials
 	if !anyRegistryFlagSet {
 		jfrogURL, err := getJFrogURL(flags, v)
 		if err != nil {
