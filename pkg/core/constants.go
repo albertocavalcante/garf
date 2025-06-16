@@ -18,3 +18,10 @@ const (
 	// RegistryTypeCloudsmith represents the Cloudsmith registry type.
 	RegistryTypeCloudsmith = "cloudsmith"
 )
+
+// ValidDestinationTypes contains the set of valid destination types for validation.
+// Using map[string]struct{} for memory efficiency in set operations.
+var ValidDestinationTypes = map[string]struct{}{
+	RegistryTypeJFrog:      {},
+	RegistryTypeCloudsmith: {},
+}
