@@ -2,7 +2,10 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "destinations",
-    srcs = ["jfrog.go"],
+    srcs = [
+        "cloudsmith.go",
+        "jfrog.go",
+    ],
     importpath = "github.com/albertocavalcante/garf/pkg/destinations",
     visibility = ["//visibility:public"],
     deps = [
