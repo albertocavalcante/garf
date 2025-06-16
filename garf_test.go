@@ -827,3 +827,156 @@ func TestClient_SourcePathStripValidation(t *testing.T) {
 		})
 	}
 }
+
+// TestRegistryTypeValidation tests the new registry type validation functionality.
+func TestRegistryTypeValidation(t *testing.T) {
+	tests := []struct {
+		name         string
+		registryType string
+		expectError  bool
+		errorMsg     string
+	}{
+		{
+			name:         "empty registry type should be valid (backward compatibility)",
+			registryType: "",
+			expectError:  false,
+		},
+		{
+			name:         "jfrog registry type should be valid",
+			registryType: "jfrog",
+			expectError:  false,
+		},
+		{
+			name:         "cloudsmith registry type should be valid",
+			registryType: "cloudsmith",
+			expectError:  false,
+		},
+		{
+			name:         "invalid registry type should fail",
+			registryType: "invalid",
+			expectError:  true,
+			errorMsg:     "unsupported registry type: invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := garf.Config{
+				JFrogURL:      "https://test.jfrog.io/artifactory",
+				JFrogUser:     "testuser",
+				JFrogPassword: "testpass",
+				RegistryType:  tt.registryType,
+			}
+
+			err := garf.ValidateConfig(config)
+
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestRegistryTypeWithNewClient tests that clients can be created with registry types.
+func TestRegistryTypeWithNewClient(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.DebugLevel)
+
+	tests := []struct {
+		name         string
+		registryType string
+		expectError  bool
+		errorMsg     string
+	}{
+		{
+			name:         "empty registry type works (backward compatibility)",
+			registryType: "",
+			expectError:  false,
+		},
+		{
+			name:         "explicit jfrog registry type works",
+			registryType: "jfrog",
+			expectError:  false,
+		},
+		{
+			name:         "cloudsmith registry type works in validation",
+			registryType: "cloudsmith",
+			expectError:  false,
+		},
+		{
+			name:         "invalid registry type fails in validation",
+			registryType: "invalid",
+			expectError:  true,
+			errorMsg:     "unsupported registry type: invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := garf.Config{
+				JFrogURL:      "https://test.jfrog.io/artifactory",
+				JFrogUser:     "testuser",
+				JFrogPassword: "testpass",
+				RegistryType:  tt.registryType,
+				Logger:        logger,
+			}
+
+			client, err := garf.NewClient(config)
+
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errorMsg)
+				require.Nil(t, client)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, client)
+				require.Equal(t, tt.registryType, client.Config.RegistryType)
+			}
+		})
+	}
+}
+
+// TestCloudsmithRegistryNotImplemented tests that Cloudsmith registry type properly
+// returns "not yet implemented" error when attempting to mirror, preventing silent failures.
+func TestCloudsmithRegistryNotImplemented(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.DebugLevel)
+
+	// Create a client with Cloudsmith registry type
+	config := garf.Config{
+		JFrogURL:      "https://test.jfrog.io/artifactory", // Still needed for validation
+		JFrogUser:     "testuser",
+		JFrogPassword: "testpass",
+		RegistryType:  "cloudsmith", // This should trigger the "not implemented" path
+		Logger:        logger,
+	}
+
+	client, err := garf.NewClient(config)
+	require.NoError(t, err, "Client creation should succeed with cloudsmith registry type")
+	require.NotNil(t, client)
+	require.Equal(t, "cloudsmith", client.Config.RegistryType)
+
+	// Create a mirror request
+	request := garf.MirrorRequest{
+		Source:      "https://github.com/example/repo/releases/download/v1.0.0/test-file.zip",
+		Destination: "test-repo",
+		DryRun:      false, // Important: not a dry run, should attempt actual destination creation
+	}
+
+	// Attempt to mirror - this should fail with "not yet implemented" error
+	ctx := context.Background()
+	result, err := client.Mirror(ctx, request)
+
+	// Verify the error is returned and contains the expected message
+	require.Error(t, err, "Mirror should fail for unimplemented Cloudsmith registry")
+	require.Contains(t, err.Error(), "cloudsmith registry not yet implemented",
+		"Error should clearly indicate Cloudsmith is not implemented")
+
+	// Verify result is nil when destination creation fails
+	require.Nil(t, result, "Result should be nil when destination creation fails")
+
+	t.Logf("Successfully verified Cloudsmith registry returns expected error: %v", err)
+}
