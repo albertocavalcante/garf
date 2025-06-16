@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.5](https://github.com/albertocavalcante/garf/compare/v0.5.4...v0.5.5) (2025-06-16)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/jfrog/jfrog-client-go to v1.54.1 ([#128](https://github.com/albertocavalcante/garf/issues/128)) ([b698729](https://github.com/albertocavalcante/garf/commit/b698729b85e65f8860e1a4b0e5f7438c3712c44e))
+
 ## [0.5.4](https://github.com/albertocavalcante/garf/compare/v0.5.3...v0.5.4) (2025-06-10)
 
 
