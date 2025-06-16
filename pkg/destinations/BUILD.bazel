@@ -20,6 +20,7 @@ go_test(
     name = "destinations_test",
     size = "small",
     srcs = [
+        "cloudsmith_test.go",
         "jfrog_helpers_test.go",
         "jfrog_source_strip_bug_test.go",
         "jfrog_test.go",

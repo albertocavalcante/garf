@@ -13,6 +13,18 @@ import (
 )
 
 func TestGetJFrogCredentialsPrecedenceAndErrors(t *testing.T) {
+	netrcPath, invalidNetrcPath := setupTestNetrcFiles(t)
+	testCases := createJFrogCredentialTestCases(t, netrcPath, invalidNetrcPath)
+	jfrogURL := "https://art.example.com/artifactory"
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			executeJFrogCredentialTest(t, tc, jfrogURL)
+		})
+	}
+}
+
+func setupTestNetrcFiles(t *testing.T) (string, string) {
 	netrcContent := "machine art.example.com login netrcuser password netrcpass\n"
 	netrcPath := testutil.CreateTemporaryNetrc(t, netrcContent)
 
@@ -23,107 +35,61 @@ func TestGetJFrogCredentialsPrecedenceAndErrors(t *testing.T) {
 		require.NoError(t, os.Chmod(invalidNetrcPath, 0o644))
 	}
 
-	testCases := []struct {
-		name     string
-		flags    cmd.MirrorFlags
-		env      map[string]string
-		wantUser string
-		wantPass string
-		wantErr  string // substring match, empty means expect no error
-	}{
-		{
-			name:     "netrc only",
-			env:      map[string]string{"NETRC": netrcPath},
-			wantUser: "netrcuser",
-			wantPass: "netrcpass",
-		},
-		{
-			name:     "env overrides netrc",
-			env:      map[string]string{"NETRC": netrcPath, "JFROG_USER": "envuser", "JFROG_PASSWORD": "envpass"},
-			wantUser: "envuser",
-			wantPass: "envpass",
-		},
-		{
-			name:     "flags override env",
-			flags:    cmd.MirrorFlags{JFrogUser: "flaguser", JFrogPassword: "flagpass"},
-			env:      map[string]string{"NETRC": netrcPath, "JFROG_USER": "envuser", "JFROG_PASSWORD": "envpass"},
-			wantUser: "flaguser",
-			wantPass: "flagpass",
-		},
-		{
-			name:    "no credentials anywhere",
-			env:     map[string]string{"NETRC": filepath.Join(t.TempDir(), "non-existent-netrc")},
-			wantErr: "JFrog user is required",
-		},
-		{
-			name:    "env user only, missing password",
-			env:     map[string]string{"NETRC": filepath.Join(t.TempDir(), "non-existent-netrc"), "JFROG_USER": "envuser"},
-			wantErr: "JFrog password is required",
-		},
-		{
-			name:     "flags provide all",
-			flags:    cmd.MirrorFlags{JFrogUser: "flaguser", JFrogPassword: "flagpass"},
-			env:      map[string]string{"NETRC": filepath.Join(t.TempDir(), "non-existent-netrc")},
-			wantUser: "flaguser",
-			wantPass: "flagpass",
-		},
-		{
-			name:     "partial env credentials with working netrc",
-			flags:    cmd.MirrorFlags{},
-			env:      map[string]string{"NETRC": netrcPath, "JFROG_USER": "envuser"},
-			wantUser: "envuser",
-			wantPass: "netrcpass", // Password comes from netrc
-		},
-		{
-			name:     "partial env password with working netrc",
-			flags:    cmd.MirrorFlags{},
-			env:      map[string]string{"NETRC": netrcPath, "JFROG_PASSWORD": "envpass"},
-			wantUser: "netrcuser", // User comes from netrc
-			wantPass: "envpass",
-		},
+	return netrcPath, invalidNetrcPath
+}
+
+type jfrogCredentialTestCase struct {
+	name     string
+	flags    cmd.MirrorFlags
+	env      map[string]string
+	wantUser string
+	wantPass string
+	wantErr  string
+}
+
+func createJFrogCredentialTestCases(t *testing.T, netrcPath, invalidNetrcPath string) []jfrogCredentialTestCase {
+	testCases := []jfrogCredentialTestCase{
+		{name: "netrc only", env: map[string]string{"NETRC": netrcPath}, wantUser: "netrcuser", wantPass: "netrcpass"},
+		{name: "env overrides netrc", env: map[string]string{"NETRC": netrcPath, "JFROG_USER": "envuser", "JFROG_PASSWORD": "envpass"}, wantUser: "envuser", wantPass: "envpass"},
+		{name: "flags override env", flags: cmd.MirrorFlags{JFrogUser: "flaguser", JFrogPassword: "flagpass"}, env: map[string]string{"NETRC": netrcPath, "JFROG_USER": "envuser", "JFROG_PASSWORD": "envpass"}, wantUser: "flaguser", wantPass: "flagpass"},
+		{name: "no credentials anywhere", env: map[string]string{"NETRC": filepath.Join(t.TempDir(), "non-existent-netrc")}, wantErr: "JFrog user is required"},
+		{name: "env user only, missing password", env: map[string]string{"NETRC": filepath.Join(t.TempDir(), "non-existent-netrc"), "JFROG_USER": "envuser"}, wantErr: "JFrog password is required"},
+		{name: "flags provide all", flags: cmd.MirrorFlags{JFrogUser: "flaguser", JFrogPassword: "flagpass"}, env: map[string]string{"NETRC": filepath.Join(t.TempDir(), "non-existent-netrc")}, wantUser: "flaguser", wantPass: "flagpass"},
+		{name: "partial env credentials with working netrc", flags: cmd.MirrorFlags{}, env: map[string]string{"NETRC": netrcPath, "JFROG_USER": "envuser"}, wantUser: "envuser", wantPass: "netrcpass"},
+		{name: "partial env password with working netrc", flags: cmd.MirrorFlags{}, env: map[string]string{"NETRC": netrcPath, "JFROG_PASSWORD": "envpass"}, wantUser: "netrcuser", wantPass: "envpass"},
 	}
 
 	// Add permission-based error test only for Unix systems
 	if runtime.GOOS != "windows" {
-		testCases = append(testCases, struct {
-			name     string
-			flags    cmd.MirrorFlags
-			env      map[string]string
-			wantUser string
-			wantPass string
-			wantErr  string
-		}{
-			name:    "partial env credentials with netrc permission error",
-			flags:   cmd.MirrorFlags{},
+		testCases = append(testCases, jfrogCredentialTestCase{
+			name: "partial env credentials with netrc permission error", flags: cmd.MirrorFlags{},
 			env:     map[string]string{"NETRC": invalidNetrcPath, "JFROG_USER": "envuser"},
 			wantErr: "JFrog password is required and .netrc lookup failed",
 		})
 	}
 
-	jfrogURL := "https://art.example.com/artifactory"
+	return testCases
+}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			testutil.WithEnv(t, tc.env, func() {
-				flags := tc.flags // copy
-				v := viper.New()
-				v.SetEnvPrefix("JFROG")
-				v.AutomaticEnv()
+func executeJFrogCredentialTest(t *testing.T, tc jfrogCredentialTestCase, jfrogURL string) {
+	testutil.WithEnv(t, tc.env, func() {
+		flags := tc.flags // copy
+		v := viper.New()
+		v.SetEnvPrefix("JFROG")
+		v.AutomaticEnv()
 
-				user, pass, err := cmd.GetJFrogCredentials(jfrogURL, &flags, v)
-				if tc.wantErr != "" {
-					require.Error(t, err)
-					require.Contains(t, err.Error(), tc.wantErr)
+		user, pass, err := cmd.GetJFrogCredentials(jfrogURL, &flags, v)
+		if tc.wantErr != "" {
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.wantErr)
 
-					return
-				}
+			return
+		}
 
-				require.NoError(t, err)
-				require.Equal(t, tc.wantUser, user)
-				require.Equal(t, tc.wantPass, pass)
-			})
-		})
-	}
+		require.NoError(t, err)
+		require.Equal(t, tc.wantUser, user)
+		require.Equal(t, tc.wantPass, pass)
+	})
 }
 
 func TestExtractHostFromURL(t *testing.T) {

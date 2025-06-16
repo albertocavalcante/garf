@@ -174,7 +174,7 @@ func TestCloudsmithDestination_BuildDestinationPath(t *testing.T) {
 				Location: "https://github.com/owner/repo/releases/download/v1.0.0/test-artifact.zip",
 			},
 			raw:          false,
-			expectedPath: "test-artifact.zip",
+			expectedPath: "owner/repo/test-artifact.zip",
 		},
 		{
 			name: "artifact with source path strip",
@@ -187,7 +187,7 @@ func TestCloudsmithDestination_BuildDestinationPath(t *testing.T) {
 				Location: "https://github.com/owner/repo/releases/download/v1.0.0/test-artifact.zip",
 			},
 			raw:          false,
-			expectedPath: "test-artifact.zip",
+			expectedPath: "owner/repo/test-artifact.zip",
 		},
 		{
 			name: "artifact with leading slash after strip",
@@ -200,7 +200,7 @@ func TestCloudsmithDestination_BuildDestinationPath(t *testing.T) {
 				Location: "https://example.com/staging/test-artifact.zip",
 			},
 			raw:          false,
-			expectedPath: "test-artifact.zip",
+			expectedPath: "owner/repo/test-artifact.zip",
 		},
 		{
 			name: "no source path strip",
@@ -212,7 +212,7 @@ func TestCloudsmithDestination_BuildDestinationPath(t *testing.T) {
 				Location: "https://example.com/path/to/test-artifact.zip",
 			},
 			raw:          false,
-			expectedPath: "path/to/test-artifact.zip",
+			expectedPath: "owner/repo/path/to/test-artifact.zip",
 		},
 	}
 
