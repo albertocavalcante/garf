@@ -371,29 +371,36 @@ func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
 	vRegistry.SetEnvPrefix("REGISTRY")
 	vRegistry.AutomaticEnv()
 
-	// Check if any registry flags (not env vars) are set - if so, all must be provided (atomic behavior)
-	// This validation must happen before reading from stdin to avoid consuming input when validation fails
+	// Check if any registry configuration is provided (flags or environment variables)
+	// This includes checking environment variables to avoid incorrect fallback to JFrog credentials
 	anyRegistryFlagSet := flags.RegistryURL != "" || flags.RegistryUser != "" ||
-		flags.RegistryPassword != "" || flags.RegistryPasswordFromStdin
+		flags.RegistryPassword != "" || flags.RegistryPasswordFromStdin || flags.RegistryType != ""
 
+	anyRegistryEnvSet := vRegistry.GetString("URL") != "" || vRegistry.GetString("USER") != "" ||
+		vRegistry.GetString("PASSWORD") != ""
+
+	usingRegistryConfig := anyRegistryFlagSet || anyRegistryEnvSet
+
+	// If using registry config via flags, validate that all required flags are provided (atomic behavior)
+	// This validation must happen before reading from stdin to avoid consuming input when validation fails
 	if anyRegistryFlagSet {
-		// If any registry flag is set, validate that all required flags are provided
+		// Only validate flags when they're explicitly set (don't require flags if env vars are used)
 		missing := []string{}
-		if flags.RegistryURL == "" {
-			missing = append(missing, "--registry-url")
+		if flags.RegistryURL == "" && vRegistry.GetString("URL") == "" {
+			missing = append(missing, "--registry-url or REGISTRY_URL")
 		}
 
-		if flags.RegistryUser == "" {
-			missing = append(missing, "--registry-user")
+		if flags.RegistryUser == "" && vRegistry.GetString("USER") == "" {
+			missing = append(missing, "--registry-user or REGISTRY_USER")
 		}
 
-		if flags.RegistryPassword == "" && !flags.RegistryPasswordFromStdin {
-			missing = append(missing, "--registry-password or --registry-password-stdin")
+		if flags.RegistryPassword == "" && !flags.RegistryPasswordFromStdin && vRegistry.GetString("PASSWORD") == "" {
+			missing = append(missing, "--registry-password, --registry-password-stdin, or REGISTRY_PASSWORD")
 		}
 
 		if len(missing) > 0 {
 			return nil, fmt.Errorf(
-				"when using generic registry flags, all must be provided. Missing: %s",
+				"when using generic registry configuration, all credentials must be provided. Missing: %s",
 				strings.Join(missing, ", "),
 			)
 		}
@@ -405,8 +412,8 @@ func buildConfigFromFlags(flags *MirrorFlags) (*config.Config, error) {
 		return nil, err
 	}
 
-	// If no registry flags are explicitly set, fall back to JFrog credentials
-	if !anyRegistryFlagSet {
+	// If no registry configuration is provided, fall back to JFrog credentials
+	if !usingRegistryConfig {
 		jfrogURL, err := getJFrogURL(flags, v)
 		if err != nil {
 			return nil, err
