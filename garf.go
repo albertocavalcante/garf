@@ -70,6 +70,9 @@ type Config struct {
 	JFrogUser     string
 	JFrogPassword string
 
+	// Registry type (defaults to "jfrog" for backward compatibility)
+	RegistryType string
+
 	// Optional: Custom logger (if nil, a default logger will be used)
 	Logger *logrus.Logger
 
@@ -312,6 +315,13 @@ func (c *Client) Mirror(ctx context.Context, request MirrorRequest) (*MirrorResu
 
 // ValidateConfig validates the client configuration.
 func ValidateConfig(config Config) error {
+	// Validate registry type if specified
+	if config.RegistryType != "" &&
+		config.RegistryType != core.RegistryTypeJFrog &&
+		config.RegistryType != core.RegistryTypeCloudsmith {
+		return fmt.Errorf("unsupported registry type: %s", config.RegistryType)
+	}
+
 	if config.JFrogURL == "" {
 		return fmt.Errorf("JFrogURL is required")
 	}
@@ -397,13 +407,31 @@ func (c *Client) IsCachedDestination(key string) bool {
 	return exists
 }
 
-// createDestination creates a new JFrog destination with the given configuration.
+// createDestination creates a destination based on the registry type with the given configuration.
 func (c *Client) createDestination(destPath, sourcePathStrip string) (core.Destination, error) {
 	// Validate sourcePathStrip parameter using centralized validation
 	if err := core.ValidateSourcePathStrip(sourcePathStrip); err != nil {
 		return nil, err
 	}
 
+	// Default to JFrog for backward compatibility
+	registryType := c.Config.RegistryType
+	if registryType == "" {
+		registryType = core.RegistryTypeJFrog
+	}
+
+	switch registryType {
+	case core.RegistryTypeJFrog:
+		return c.createJFrogDestination(destPath, sourcePathStrip)
+	case core.RegistryTypeCloudsmith:
+		return nil, fmt.Errorf("cloudsmith registry not yet implemented")
+	default:
+		return nil, fmt.Errorf("unsupported registry type: %s", registryType)
+	}
+}
+
+// createJFrogDestination creates a new JFrog destination with the given configuration.
+func (c *Client) createJFrogDestination(destPath, sourcePathStrip string) (core.Destination, error) {
 	jfrogConfig := destinations.JFrogConfig{
 		URL:             c.Config.JFrogURL,
 		User:            c.Config.JFrogUser,
