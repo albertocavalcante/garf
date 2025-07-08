@@ -6,7 +6,7 @@ toolchain go1.24.4
 
 require (
 	github.com/albertocavalcante/netrcgo v0.1.2
-	github.com/jfrog/jfrog-client-go v1.54.1
+	github.com/jfrog/jfrog-client-go v1.54.2
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
