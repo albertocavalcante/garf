@@ -32,6 +32,10 @@ type MirrorOptions struct {
 	// PreserveZipName indicates if the ZIP filename should be preserved when extracting,
 	// replacing the ZIP extension with the extracted file's extension
 	PreserveZipName bool
+
+	// Checksum is the SHA256 checksum to verify the artifact against
+	// If empty, no verification is performed
+	Checksum string
 }
 
 // Validate validates the mirror options.

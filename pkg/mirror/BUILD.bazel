@@ -3,6 +3,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "mirror",
     srcs = [
+        "checksum.go",
         "mirror.go",
         "mirror_impl.go",
         "mirror_process.go",
@@ -22,6 +23,7 @@ go_test(
     name = "mirror_test",
     size = "small",
     srcs = [
+        "mirror_checksum_test.go",
         "mirror_impl_test.go",
         "mirror_process_test.go",
         "mirror_test.go",
@@ -32,6 +34,7 @@ go_test(
         "//pkg/core/config",
         "//pkg/destinations",
         "@com_github_sirupsen_logrus//:logrus",
+        "@com_github_stretchr_testify//assert",
         "@com_github_stretchr_testify//require",
     ],
 )
