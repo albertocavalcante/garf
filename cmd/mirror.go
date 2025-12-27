@@ -35,6 +35,7 @@ type MirrorFlags struct {
 	DryRun          bool
 	DryRunMode      string
 	SourcePathStrip string
+	Checksum        string
 
 	// Legacy JFrog-specific flags (backward compatibility, will be removed in future versions)
 	JFrogURL               string
@@ -146,6 +147,9 @@ func setupProcessingFlags(cmd *cobra.Command, flags *MirrorFlags) {
 	cmd.Flags().BoolVar(&flags.PreserveZipName, "preserve-zip-name", false, "Preserve the ZIP filename when extracting, replacing the ZIP extension with the extracted file's extension")
 	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "Perform a dry run without making actual changes")
 	cmd.Flags().StringVar(&flags.DryRunMode, "dry-run-mode", "all", "Dry run mode: 'all' (skip all operations), 'upload' (skip only upload to Artifactory)")
+	cmd.Flags().StringVar(&flags.Checksum, "checksum", "", "SHA256 checksum to verify the artifact against")
+	cmd.Flags().StringVar(&flags.Checksum, "sha256", "", "Alias for --checksum")
+	cmd.Flags().MarkHidden("sha256")
 }
 
 // setupJFrogFlags configures JFrog-specific flags.
@@ -589,7 +593,10 @@ func createArtifactAndOptions(flags *MirrorFlags, cfg *config.Config) (*core.Art
 		DryRun:          flags.DryRun,
 		DryRunMode:      flags.DryRunMode,
 		Unzip:           flags.Unzip,
+		DryRunMode:      flags.DryRunMode,
+		Unzip:           flags.Unzip,
 		PreserveZipName: flags.PreserveZipName,
+		Checksum:        flags.Checksum,
 	}
 
 	return artifact, opts

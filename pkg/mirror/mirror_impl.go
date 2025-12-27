@@ -275,6 +275,12 @@ func (m *DefaultMirror) downloadAndProcessContent(
 
 	logger.Info("Successfully downloaded artifact from source")
 
+	// Verify checksum if provided
+	if opts != nil && opts.Checksum != "" {
+		logger.WithField("expected_checksum", opts.Checksum).Info("Verifying checksum")
+		content = NewChecksumValidatingReader(content, opts.Checksum)
+	}
+
 	// Handle ZIP extraction if needed
 	finalContent, finalArtifact, err := m.processContentForUpload(ctx, content, artifact, opts, m.logger)
 	if err != nil {
