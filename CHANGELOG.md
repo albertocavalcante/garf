@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.6](https://github.com/albertocavalcante/garf/compare/v0.5.5...v0.5.6) (2025-12-27)
+
+
+### Features
+
+* add `RegistryType` ([#136](https://github.com/albertocavalcante/garf/issues/136)) ([da25aec](https://github.com/albertocavalcante/garf/commit/da25aec553c942e6deb98e06d6ff654c99005eb9))
+* add SHA256 checksum verification to mirror command ([#173](https://github.com/albertocavalcante/garf/issues/173)) ([2957df5](https://github.com/albertocavalcante/garf/commit/2957df5b74960ca1e9a9250e808c5a89daa81ce9))
+* enhance mirror command with new registry flags ([#138](https://github.com/albertocavalcante/garf/issues/138)) ([b42c610](https://github.com/albertocavalcante/garf/commit/b42c610d4bad12dabf3151b1c1c27e65f713e70f))
+* implement `Cloudsmith` destination ([#139](https://github.com/albertocavalcante/garf/issues/139)) ([e05b998](https://github.com/albertocavalcante/garf/commit/e05b998322197a0e38d52c4c2c224b36644770d5))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/cloudsmith-io/cloudsmith-api-go to v0.0.50 ([#148](https://github.com/albertocavalcante/garf/issues/148)) ([39a0edc](https://github.com/albertocavalcante/garf/commit/39a0edcc2aed9d84eec2c0cae70c1cd990d7bbb0))
+* **deps:** update module github.com/jfrog/jfrog-client-go to v1.54.2 ([#146](https://github.com/albertocavalcante/garf/issues/146)) ([6b2fa46](https://github.com/albertocavalcante/garf/commit/6b2fa467f35171efde82c0150387e48a04c02bfc))
+* **deps:** update module github.com/spf13/cobra to v1.10.2 ([#161](https://github.com/albertocavalcante/garf/issues/161)) ([cfe4217](https://github.com/albertocavalcante/garf/commit/cfe4217a4927c423fe6af71d401f0712e84b0912))
+* **deps:** update module github.com/spf13/viper to v1.21.0 ([#162](https://github.com/albertocavalcante/garf/issues/162)) ([bb8e10f](https://github.com/albertocavalcante/garf/commit/bb8e10f96ab5b1b53c397f010dda80cdb9f3c935))
+* **deps:** update module github.com/stretchr/testify to v1.11.1 ([#170](https://github.com/albertocavalcante/garf/issues/170)) ([3cecf73](https://github.com/albertocavalcante/garf/commit/3cecf731a7b7d2541fcc0d87818a4389b672bdde))
+
 ## [0.5.5](https://github.com/albertocavalcante/garf/compare/v0.5.4...v0.5.5) (2025-06-16)
 
 
