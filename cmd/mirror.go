@@ -593,8 +593,6 @@ func createArtifactAndOptions(flags *MirrorFlags, cfg *config.Config) (*core.Art
 		DryRun:          flags.DryRun,
 		DryRunMode:      flags.DryRunMode,
 		Unzip:           flags.Unzip,
-		DryRunMode:      flags.DryRunMode,
-		Unzip:           flags.Unzip,
 		PreserveZipName: flags.PreserveZipName,
 		Checksum:        flags.Checksum,
 	}

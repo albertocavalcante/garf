@@ -1,7 +1,6 @@
 package mirror
 
 import (
-	"bytes"
 	"io"
 	"strings"
 	"testing"
