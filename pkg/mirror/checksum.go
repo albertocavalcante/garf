@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"strings"
 )
 
 // ChecksumValidatingReader wraps an io.ReadCloser and validates the SHA256 checksum
@@ -42,7 +43,7 @@ func (r *ChecksumValidatingReader) Read(p []byte) (int, error) {
 	if err == io.EOF {
 		if !r.validated {
 			sum := hex.EncodeToString(r.hash.Sum(nil))
-			if sum != r.expected {
+			if !strings.EqualFold(sum, r.expected) {
 				r.err = fmt.Errorf("checksum mismatch: expected %s, got %s", r.expected, sum)
 				return n, r.err
 			}

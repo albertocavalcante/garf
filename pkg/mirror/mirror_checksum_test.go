@@ -25,6 +25,15 @@ func TestChecksumValidatingReader(t *testing.T) {
 		assert.Equal(t, content, string(readContent))
 	})
 
+	t.Run("Valid uppercase checksum", func(t *testing.T) {
+		reader := io.NopCloser(strings.NewReader(content))
+		validatingReader := NewChecksumValidatingReader(reader, strings.ToUpper(validChecksum))
+
+		readContent, err := io.ReadAll(validatingReader)
+		require.NoError(t, err)
+		assert.Equal(t, content, string(readContent))
+	})
+
 	t.Run("Invalid checksum", func(t *testing.T) {
 		reader := io.NopCloser(strings.NewReader(content))
 		validatingReader := NewChecksumValidatingReader(reader, invalidChecksum)
