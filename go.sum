@@ -72,10 +72,14 @@ github.com/jfrog/archiver/v3 v3.6.1 h1:LOxnkw9pOn45DzCbZNFV6K0+6dCsQ0L8mR3ZcujO5
 github.com/jfrog/archiver/v3 v3.6.1/go.mod h1:VgR+3WZS4N+i9FaDwLZbq+jeU4B4zctXL+gL4EMzfLw=
 github.com/jfrog/build-info-go v1.10.14 h1:PWnw+rBwiQTHZ5q+84+E8MHFjtAQkB3+Oc2sKwBSSGE=
 github.com/jfrog/build-info-go v1.10.14/go.mod h1:JcISnovFXKx3wWf3p1fcMmlPdt6adxScXvoJN4WXqIE=
+github.com/jfrog/build-info-go v1.11.0 h1:qEONCgaHKlW3e2y0zIwTZVbgS/ERZrPlBWEbOYJbaSU=
+github.com/jfrog/build-info-go v1.11.0/go.mod h1:szdz9+WzB7+7PGnILLUgyY+OF5qD5geBT7UGNIxibyw=
 github.com/jfrog/gofrog v1.7.6 h1:QmfAiRzVyaI7JYGsB7cxfAJePAZTzFz0gRWZSE27c6s=
 github.com/jfrog/gofrog v1.7.6/go.mod h1:ntr1txqNOZtHplmaNd7rS4f8jpA5Apx8em70oYEe7+4=
 github.com/jfrog/jfrog-client-go v1.54.2 h1:z7GjCyIbV5Wx35USVDCF/0vf/fCWki++pZ7lcKt0gj0=
 github.com/jfrog/jfrog-client-go v1.54.2/go.mod h1:1v0eih4thdPA4clBo9TuvAMT25sGDr1IQJ81DXQ/lBY=
+github.com/jfrog/jfrog-client-go v1.55.0 h1:dZq7sLjUJMps8X1I5coVUChprtR7xklp7oSfmZnI48w=
+github.com/jfrog/jfrog-client-go v1.55.0/go.mod h1:/e2kaF1oZTmSRgMIk7wYna5xMtNY7Xk8ahpSNZQ2d3s=
 github.com/kevinburke/ssh_config v1.2.0 h1:x584FjTGwHzMwvHx18PXxbBVzfnxogHaAReU4gf13a4=
 github.com/kevinburke/ssh_config v1.2.0/go.mod h1:CT57kijsi8u/K/BOFA39wgDQJ9CxiF4nAY/ojJ6r6mM=
 github.com/klauspost/compress v1.4.1/go.mod h1:RyIbtBH6LamlWaDj8nUwkbUhJ87Yi3uG0guNDohfE1A=
@@ -149,6 +153,8 @@ github.com/terminalstatic/go-xsd-validate v0.1.6/go.mod h1:18lsvYFofBflqCrvo1ump
 github.com/ulikunitz/xz v0.5.6/go.mod h1:2bypXElzHzzJZwzH67Y6wb67pO62Rzfn7BSiF4ABRW8=
 github.com/ulikunitz/xz v0.5.12 h1:37Nm15o69RwBkXM0J6A5OlE67RZTfzUxTj8fB3dfcsc=
 github.com/ulikunitz/xz v0.5.12/go.mod h1:nbz6k7qbPmH4IRqmfOplQw/tblSgqTqBwxkY0oWt/14=
+github.com/ulikunitz/xz v0.5.14 h1:uv/0Bq533iFdnMHZdRBTOlaNMdb1+ZxXIlHDZHIHcvg=
+github.com/ulikunitz/xz v0.5.14/go.mod h1:nbz6k7qbPmH4IRqmfOplQw/tblSgqTqBwxkY0oWt/14=
 github.com/xanzy/ssh-agent v0.3.3 h1:+/15pJfg/RsTxqYcX6fHqOXZwwMP+2VyYWJeWM2qQFM=
 github.com/xanzy/ssh-agent v0.3.3/go.mod h1:6dzNDKs0J9rVPHPhaGCukekBHKqfl+L3KghI1Bc68Uw=
 github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f h1:J9EGpcZtP0E/raorCMxlFGSTBrsSlaDGf3jU/qvAE2c=
