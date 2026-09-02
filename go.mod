@@ -2,7 +2,7 @@ module github.com/albertocavalcante/garf
 
 go 1.23.7
 
-toolchain go1.25.6
+toolchain go1.27.1
 
 require (
 	github.com/albertocavalcante/netrcgo v0.1.2
