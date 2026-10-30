@@ -383,17 +383,17 @@ func resolveCredentialsWithNetrc(flags *MirrorFlags, registryPassword, jfrogPass
 	resolver := config.NewCredentialsResolver()
 
 	registryConfig := &config.RegistryConfig{
-		URL:              flags.RegistryURL,
-		User:             flags.RegistryUser,
-		Password:         registryPassword,
-		Type:             flags.RegistryType,
+		URL:               flags.RegistryURL,
+		User:              flags.RegistryUser,
+		Password:          registryPassword,
+		Type:              flags.RegistryType,
 		PasswordFromStdin: false, // passwordFromStdin already handled
 	}
 
 	jfrogConfig := &config.JFrogConfig{
-		URL:              flags.JFrogURL,
-		User:             flags.JFrogUser,
-		Password:         jfrogPassword,
+		URL:               flags.JFrogURL,
+		User:              flags.JFrogUser,
+		Password:          jfrogPassword,
 		PasswordFromStdin: false, // passwordFromStdin already handled
 	}
 
